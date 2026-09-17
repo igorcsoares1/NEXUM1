@@ -374,9 +374,10 @@ export default function App() {
   const lastHealthCheckTime = React.useRef<number>(0);
 
   const handleRunHealthCheck = async (force = false) => {
-    // Throttle automatic checks to once every 30 seconds
+    // Throttle automatic checks to once every 5 minutes to preserve API quota
     const now = Date.now();
-    if (!force && now - lastHealthCheckTime.current < 30000) {
+    const FIVE_MINUTES = 5 * 60 * 1000;
+    if (!force && now - lastHealthCheckTime.current < FIVE_MINUTES) {
       return;
     }
 
@@ -393,6 +394,7 @@ export default function App() {
   };
 
   useEffect(() => {
+    // Automatic health check - throttled to prevent quota exhaustion
     if (activeView === 'dashboard' && contracts.length > 0 && !healthCheck && !isCheckingHealth) {
       handleRunHealthCheck();
     }

@@ -91,7 +91,7 @@ async function startServer() {
         httpOptions: { headers: { 'User-Agent': 'aistudio-build' } }
       });
 
-      // Stick to the recommended stable model for this environment
+      // Use gemini-3.8-flash for recommended stability and capability in this environment
       const targetModel = "gemini-3.8-flash";
 
       const result = await withRetry(() => ai.models.generateContent({
@@ -119,8 +119,12 @@ async function startServer() {
       const isRateLimit = errorMsg.includes('429') || errorMsg.includes('RESOURCE_EXHAUSTED');
       
       const status = isUnavailable ? 503 : (isRateLimit ? 429 : 500);
+      const userMessage = isRateLimit 
+        ? "Limite de requisições de IA atingido. Por favor, aguarde alguns minutos antes de tentar novamente."
+        : (isUnavailable ? "O serviço de IA está temporariamente sobrecarregado. Tente novamente em instantes." : errorMsg);
+
       res.status(status).json({ 
-        error: errorMsg
+        error: userMessage
       });
     }
   });
