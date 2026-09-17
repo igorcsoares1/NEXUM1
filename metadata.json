@@ -1,0 +1,6 @@
+{
+  "name": "NEXUM - Gestão Municipal",
+  "description": "Sistema de Gestão Municipal para controle de combustível, diárias, checklists, contratos e relatórios.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

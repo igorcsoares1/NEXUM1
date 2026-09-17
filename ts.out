@@ -1,0 +1,6 @@
+src/App.tsx(3521,44): error TS2339: Property 'name' does not exist on type 'unknown'.
+src/App.tsx(3523,44): error TS2339: Property 'type' does not exist on type 'unknown'.
+src/App.tsx(3526,50): error TS2345: Argument of type 'unknown' is not assignable to parameter of type 'Blob'.
+  Type '{}' is missing the following properties from type 'Blob': size, type, arrayBuffer, bytes, and 3 more.
+src/components/ErrorBoundary.tsx(60,17): error TS2339: Property 'props' does not exist on type 'ErrorBoundary'.
+src/hooks/useAuth.ts(57,33): error TS2503: Cannot find namespace 'React'.
