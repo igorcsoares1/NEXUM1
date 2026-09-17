@@ -17,7 +17,8 @@ import {
   Database,
   Users,
   RefreshCw,
-  TrendingUp
+  TrendingUp,
+  Link as LinkIcon
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { format, parseISO } from 'date-fns';
@@ -67,6 +68,7 @@ interface DiariasProps {
   setEditingServidor: (servidor: Servidor | null) => void;
   setNewServidorData: (data: any) => void;
   addNotification: (title: string, message: string, type: any) => void;
+  setShowDailyDiariaReport: (show: boolean) => void;
 }
 
 const Diarias = ({
@@ -101,7 +103,8 @@ const Diarias = ({
   setShowNewServidorModal,
   setEditingServidor,
   setNewServidorData,
-  addNotification
+  addNotification,
+  setShowDailyDiariaReport
 }: DiariasProps) => {
   const [viewMode, setViewMode] = React.useState<'list' | 'servidores'>('list');
   const [isSyncing, setIsSyncing] = React.useState(false);
@@ -366,6 +369,18 @@ const Diarias = ({
                     <button 
                       onClick={(e) => {
                         e.stopPropagation();
+                        const url = `${window.location.origin}/diaria/${record.id}`;
+                        navigator.clipboard.writeText(url);
+                        addNotification("Sucesso", "Link público da diária copiado!", "success");
+                      }}
+                      className="flex-1 bg-primary/10 text-primary py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all active:scale-95 flex items-center justify-center gap-2 border border-primary/20"
+                    >
+                      <LinkIcon size={14} />
+                      Link
+                    </button>
+                    <button 
+                      onClick={(e) => {
+                        e.stopPropagation();
                         handleEditDaily(record);
                       }}
                       className="flex-1 bg-surface-hover hover:bg-border text-text-primary py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all active:scale-95 flex items-center justify-center gap-2 border border-border/60"
@@ -442,6 +457,13 @@ setNewDailyData({
             <p className="text-text-secondary font-medium">Gestão de solicitações, pagamentos e prestação de contas.</p>
           </div>
           <div className="flex items-center gap-3">
+            <button 
+              onClick={() => setShowDailyDiariaReport(true)}
+              className="px-6 py-3.5 rounded-2xl font-black uppercase tracking-widest text-xs flex items-center gap-2 bg-primary/10 text-primary border border-primary/20 hover:bg-primary/20 transition-all"
+            >
+              <Calendar size={18} />
+              Relatório Diário / Link
+            </button>
             <button 
               onClick={handlePrint}
               className="px-6 py-3.5 rounded-2xl font-black uppercase tracking-widest text-xs flex items-center gap-2 btn-surface"
@@ -580,6 +602,17 @@ setNewDailyData({
                             </button>
                           </>
                         )}
+                        <button 
+                          onClick={() => {
+                            const url = `${window.location.origin}/diaria/${record.id}`;
+                            navigator.clipboard.writeText(url);
+                            addNotification("Sucesso", "Link público da diária copiado!", "success");
+                          }}
+                          title="Copiar Link Público"
+                          className="p-2 hover:bg-primary/10 rounded-xl text-primary transition-all active:scale-95"
+                        >
+                          <LinkIcon size={18} />
+                        </button>
                         <button 
                           onClick={() => handleEditDaily(record)}
                           className="p-2 hover:bg-primary/10 rounded-xl text-primary transition-all active:scale-95"

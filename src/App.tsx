@@ -31,6 +31,7 @@ import {
   CheckSquare,
   Users,
   Lock as LockIcon,
+  Link as LinkIcon,
   Loader2
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
@@ -55,6 +56,7 @@ import Manual from './pages/Manual';
 import Configuracoes from './pages/Configuracoes';
 import Login from './pages/Login';
 import ChecklistPublico from './pages/ChecklistPublico';
+import DiariaPublica from './pages/DiariaPublica';
 import RelatorioExecutivo from './components/views/RelatorioExecutivo';
 import { Modals } from './components/Modals';
 
@@ -365,6 +367,7 @@ export default function App() {
   const [showCriticalModal, setShowCriticalModal] = useState(false);
   const [showNewChecklistModal, setShowNewChecklistModal] = useState(false);
   const [showDailyChecklistReport, setShowDailyChecklistReport] = useState(false);
+  const [showDailyDiariaReport, setShowDailyDiariaReport] = useState(false);
   const [showSelectedChecklistReport, setShowSelectedChecklistReport] = useState(false);
   const [showChecklistSelectionModal, setShowChecklistSelectionModal] = useState(false);
   const [dashboardDateRange, setDashboardDateRange] = useState('6months');
@@ -1733,6 +1736,7 @@ export default function App() {
             setEditingServidor={setEditingServidor}
             setNewServidorData={setNewServidorData}
             addNotification={addNotification}
+            setShowDailyDiariaReport={setShowDailyDiariaReport}
           />
         );
       case 'checklists':
@@ -1911,6 +1915,10 @@ export default function App() {
 
   if (location.pathname.startsWith('/checklist/')) {
     return <ChecklistPublico />;
+  }
+
+  if (location.pathname.startsWith('/diaria/')) {
+    return <DiariaPublica />;
   }
 
   if (!isLoggedIn) {
@@ -2216,6 +2224,103 @@ export default function App() {
       </AnimatePresence>
       {/* New Checklist Modal */}
       <AnimatePresence>
+        {showDailyDiariaReport && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 print:p-0 print:static print:bg-white">
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setShowDailyDiariaReport(false)}
+              className="absolute inset-0 bg-black/60 backdrop-blur-sm print:hidden"
+            />
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 20 }}
+              className="relative w-full max-w-4xl max-h-[90vh] flex flex-col bg-surface border border-border rounded-[32px] shadow-2xl overflow-hidden print:shadow-none print:border-none print:rounded-none print:max-h-none print:h-auto"
+            >
+              <div className="p-8 border-b border-border flex justify-between items-center bg-surface-hover/30 print:bg-transparent print:border-b-2 print:border-black">
+                <div className="flex items-center gap-3">
+                  <div className="p-2.5 bg-primary/10 rounded-2xl text-primary shadow-inner print:hidden">
+                    <Calendar size={24} />
+                  </div>
+                  <div>
+                    <h3 className="text-2xl font-bold tracking-tight print:text-black">Relatório Diário de Diárias</h3>
+                    <p className="text-sm text-text-secondary font-medium print:text-black">
+                      {format(new Date(), "dd 'de' MMMM 'de' yyyy", { locale: ptBR })}
+                    </p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2 print:hidden">
+                  <button
+                    onClick={() => {
+                      const today = format(new Date(), 'yyyy-MM-dd');
+                      const todayDiarias = dailyRecords.filter(d => d.date === today);
+                      // Usar uma função genérica ou específica para PDF de diárias em lote
+                      generateDailyPDF(todayDiarias, servidores, systemSettings);
+                    }}
+                    className="p-2.5 hover:bg-surface-hover rounded-xl text-text-secondary transition-colors border border-border"
+                    title="Imprimir Relatório"
+                  >
+                    <Printer size={20} />
+                  </button>
+                  <button
+                    onClick={() => {
+                      const today = format(new Date(), 'yyyy-MM-dd');
+                      const url = `${window.location.origin}/diaria/dia/${today}`;
+                      navigator.clipboard.writeText(url);
+                      addNotification("Sucesso", "Link público do dia copiado!", "success");
+                    }}
+                    className="p-2.5 hover:bg-surface-hover rounded-xl text-primary transition-colors border border-primary/20 flex items-center gap-2"
+                    title="Copiar Link de Aprovação"
+                  >
+                    <LinkIcon size={20} />
+                    <span className="text-xs font-bold">Copiar Link</span>
+                  </button>
+                  <button
+                    onClick={() => setShowDailyDiariaReport(false)}
+                    className="p-2.5 hover:bg-surface-hover rounded-xl text-text-secondary transition-colors"
+                  >
+                    <X size={20} />
+                  </button>
+                </div>
+              </div>
+              <div className="p-8 overflow-y-auto print:overflow-visible">
+                <PrintHeader title="Relatório Diário de Diárias" />
+                <div className="space-y-6">
+                  {dailyRecords.filter(d => d.date === format(new Date(), 'yyyy-MM-dd')).length === 0 ? (
+                    <div className="text-center py-12 text-text-secondary">
+                      <Calendar size={48} className="mx-auto mb-4 opacity-20" />
+                      <p className="text-lg font-medium">Nenhuma diária registrada hoje.</p>
+                    </div>
+                  ) : (
+                    <table className="w-full text-left border-collapse">
+                      <thead>
+                        <tr className="text-text-secondary text-[10px] uppercase tracking-widest border-b border-border print:text-black print:border-black">
+                          <th className="px-4 py-3 font-bold">Beneficiário</th>
+                          <th className="px-4 py-3 font-bold">Destino</th>
+                          <th className="px-4 py-3 font-bold">Finalidade</th>
+                          <th className="px-4 py-3 font-bold">Valor</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-border print:divide-black/20">
+                        {dailyRecords.filter(d => d.date === format(new Date(), 'yyyy-MM-dd')).map((daily, idx) => (
+                          <tr key={`report-daily-${daily.id}-${idx}`} className="print:text-black">
+                            <td className="px-4 py-3 text-sm font-bold">{daily.beneficiary || daily.driver}</td>
+                            <td className="px-4 py-3 text-sm">{daily.destination}</td>
+                            <td className="px-4 py-3 text-sm truncate max-w-[200px]">{daily.purpose || '-'}</td>
+                            <td className="px-4 py-3 text-sm font-medium">{formatCurrency(parseCurrencyToNumber(daily.value))}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  )}
+                </div>
+              </div>
+            </motion.div>
+          </div>
+        )}
+
         {showDailyChecklistReport && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 print:p-0 print:static print:bg-white">
             <motion.div
@@ -2279,7 +2384,6 @@ export default function App() {
                           <th className="px-4 py-3 font-bold">Fornecedor</th>
                           <th className="px-4 py-3 font-bold">Objeto</th>
                           <th className="px-4 py-3 font-bold">Valor Nota</th>
-                          <th className="px-4 py-3 font-bold">Status</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-border print:divide-black/20">
@@ -2289,16 +2393,6 @@ export default function App() {
                             <td className="px-4 py-3 text-sm">{checklist.vendor}</td>
                             <td className="px-4 py-3 text-sm truncate max-w-[200px]">{checklist.object}</td>
                             <td className="px-4 py-3 text-sm font-medium">{checklist.invoiceValue}</td>
-                            <td className="px-4 py-3">
-                              <span className={cn(
-                                "text-[10px] font-black px-2 py-1 rounded uppercase tracking-widest print:border print:border-black print:bg-transparent print:text-black",
-                                checklist.status === 'concluido' && "bg-emerald-500/10 text-emerald-500",
-                                checklist.status === 'atencao' && "bg-amber-500/10 text-amber-500",
-                                checklist.status === 'em_analise' && "bg-blue-500/10 text-blue-500"
-                              )}>
-                                {(checklist.status || '').replace('_', ' ')}
-                              </span>
-                            </td>
                           </tr>
                         ))}
                       </tbody>

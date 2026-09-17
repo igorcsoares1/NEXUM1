@@ -122,8 +122,6 @@ export const generateChecklistPDF = (checklist: any, systemSettings: any) => {
       ['Fornecedor', checklist.vendor || '-'],
       ['Valor do Contrato', checklist.value || '-'],
       ['Valor da Nota', checklist.invoiceValue || '-'],
-      ['Data de Envio', checklist.submissionDate ? format(new Date(checklist.submissionDate), 'dd/MM/yyyy') : '-'],
-      ['Status', checklist.status || '-'],
       ['Objeto', checklist.object || '-']
     ],
   });
@@ -163,17 +161,14 @@ export const generateChecklistsReportPDF = (records: any[], title: string, syste
   
   const body = records.map(r => [
     r.processNumber || '-',
-    r.contractNumber || '-',
     r.vendor || '-',
     r.object || '-',
-    r.value || '-',
-    r.submissionDate ? format(new Date(r.submissionDate), 'dd/MM/yyyy') : '-',
-    r.status || '-'
+    r.invoiceValue || '-'
   ]);
   
   autoTable(doc, {
     startY,
-    head: [['Processo', 'Contrato', 'Fornecedor', 'Objeto', 'Valor', 'Data', 'Status']],
+    head: [['Processo', 'Fornecedor', 'Objeto', 'Valor Nota']],
     body,
     theme: 'striped',
     headStyles: { fillColor: [2, 132, 199] },
@@ -217,18 +212,16 @@ export const generateDailyPDF = (records: any[], servidores: any[], systemSettin
       (s.name && (r.beneficiary || r.driver) && s.name.trim().toLowerCase() === (r.beneficiary || r.driver).trim().toLowerCase())
     );
     return [
-      r.date ? format(new Date(r.date), 'dd/MM/yyyy') : '-',
       r.driver || r.beneficiary || '-',
       r.registrationNumber || servant?.registrationNumber || '-',
       r.destination || '-',
-      r.value || '-',
-      r.status || '-'
+      r.value || '-'
     ];
   });
   
   autoTable(doc, {
     startY,
-    head: [['Data', 'Beneficiário', 'Matrícula', 'Destino', 'Valor', 'Status']],
+    head: [['Beneficiário', 'Matrícula', 'Destino', 'Valor']],
     body,
     theme: 'striped',
     headStyles: { fillColor: [2, 132, 199] },

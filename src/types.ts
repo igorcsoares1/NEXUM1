@@ -165,6 +165,15 @@ export interface ChecklistConfirmation {
   data_confirmacao: string;
 }
 
+export interface DiariaConfirmation {
+  id: string;
+  diaria_id: string;
+  prefeituraId: string;
+  nome_aprovador: string;
+  data_aprovacao: string;
+  observacao?: string;
+}
+
 export interface User {
   id: string;
   uid?: string;

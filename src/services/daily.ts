@@ -466,3 +466,126 @@ export const syncServidoresFromDiarias = async (
     }
   }
 };
+
+export const fetchDiariaPublic = async (id: string): Promise<DailyRecord | null> => {
+  try {
+    const { data, error } = await supabase
+      .from('dailyRecords')
+      .select('*')
+      .eq('id', id)
+      .maybeSingle();
+    
+    if (error) throw error;
+    return data;
+  } catch (error) {
+    console.error("Erro ao buscar diária pública:", error);
+    throw error;
+  }
+};
+
+export const fetchDiariasByDate = async (date: string, prefeituraId: string = '1'): Promise<DailyRecord[]> => {
+  try {
+    const { data, error } = await supabase
+      .from('dailyRecords')
+      .select('*')
+      .eq('date', date)
+      .eq('prefeituraId', prefeituraId);
+    
+    if (error) throw error;
+    return data || [];
+  } catch (error) {
+    console.error("Erro ao buscar diárias por data:", error);
+    throw error;
+  }
+};
+
+export const saveDiariaConfirmation = async (
+  diaria: DailyRecord, 
+  status: 'aprovado' | 'rejeitado',
+  nome?: string,
+  observacao?: string
+): Promise<{ success: boolean; error?: string }> => {
+  try {
+    const approvalName = nome || 'Link Público';
+    // 1. Salvar na tabela de confirmações
+    const { error: confirmError } = await supabase
+      .from('diaria_confirmacoes')
+      .insert({
+        diaria_id: diaria.id,
+        nome_aprovador: approvalName,
+        data_aprovacao: new Date().toISOString(),
+        prefeituraId: diaria.prefeituraId || '1',
+        observacao: status === 'rejeitado' ? `REJEITADO: ${observacao || ''}` : observacao
+      });
+    
+    if (confirmError) {
+      if (confirmError.message?.includes('diaria_confirmacoes')) {
+        console.warn("Tabela diaria_confirmacoes não encontrada. Apenas atualizando status da diária.");
+      } else {
+        throw confirmError;
+      }
+    }
+
+    // 2. Atualizar status na diária
+    const { error: updateError } = await supabase
+      .from('dailyRecords')
+      .update({
+        status: status === 'aprovado' ? 'aprovado' : 'atencao',
+        approvalStatus: status,
+        approvedBy: `${approvalName}`,
+        approvedAt: new Date().toISOString()
+      })
+      .eq('id', diaria.id);
+
+    if (updateError) throw updateError;
+
+    return { success: true };
+  } catch (error: any) {
+    console.error("Erro ao salvar confirmação de diária:", error);
+    return { success: false, error: error.message || "Erro ao salvar confirmação." };
+  }
+};
+
+export const saveBatchDiariaConfirmation = async (
+  diarias: DailyRecord[], 
+  status: 'aprovado' | 'rejeitado',
+  nome?: string
+): Promise<{ success: boolean; error?: string }> => {
+  try {
+    const approvalName = nome || 'Link Público';
+    const confirmations = diarias.map(d => ({
+      diaria_id: d.id,
+      nome_aprovador: approvalName,
+      data_aprovacao: new Date().toISOString(),
+      prefeituraId: d.prefeituraId || '1',
+      observacao: status === 'rejeitado' ? 'REJEIÇÃO EM LOTE' : undefined
+    }));
+
+    // Tentativa de salvar confirmações em lote
+    const { error: batchError } = await supabase
+      .from('diaria_confirmacoes')
+      .insert(confirmations);
+    
+    if (batchError && !batchError.message?.includes('diaria_confirmacoes')) {
+      throw batchError;
+    }
+
+    // Atualizar status de todas as diárias
+    const { error: updateError } = await supabase
+      .from('dailyRecords')
+      .update({
+        status: status === 'aprovado' ? 'aprovado' : 'atencao',
+        approvalStatus: status,
+        approvedBy: `${approvalName}`,
+        approvedAt: new Date().toISOString()
+      })
+      .in('id', diarias.map(d => d.id));
+
+    if (updateError) throw updateError;
+
+    return { success: true };
+  } catch (error: any) {
+    console.error("Erro ao salvar confirmações de diária em lote:", error);
+    return { success: false, error: error.message || "Erro ao salvar confirmações." };
+  }
+};

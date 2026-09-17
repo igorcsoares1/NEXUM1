@@ -87,80 +87,77 @@ export function RecibosDigitaisComponent() {
   }
 
   return (
-    <div className="flex flex-col h-full bg-background/50 rounded-2xl md:rounded-[32px] border border-border overflow-hidden">
-      {/* Header Interativo */}
-      <div className="p-4 md:p-6 border-b border-border bg-surface-hover/30">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-4">
+    <div className="flex flex-col h-full overflow-hidden">
+      {/* Header Interativo - Mais discreto para integração */}
+      <div className="pb-4 mb-4 border-b border-border/40">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div className="flex items-center gap-3">
-            <div className="p-2.5 bg-primary/10 rounded-2xl text-primary">
-              <FileCheck size={20} />
+            <div className="p-2 bg-primary/10 rounded-xl text-primary">
+              <FileCheck size={18} />
             </div>
             <div>
-              <h2 className="text-base font-black tracking-tight text-text-primary">Recibos Digitais</h2>
-              <p className="text-[10px] text-text-secondary font-bold uppercase tracking-widest">Protocolos de Auditoria</p>
+              <h2 className="text-sm font-black tracking-tight text-text-primary">Recibos Digitais</h2>
+              <p className="text-[9px] text-text-secondary font-bold uppercase tracking-widest">Protocolos de Auditoria</p>
             </div>
           </div>
-          <div className="flex items-center gap-2 self-start sm:self-auto px-3 py-1 bg-surface rounded-full border border-border shadow-sm">
-            <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-            <span className="text-[9px] font-black text-text-secondary uppercase tracking-tighter">Live</span>
+          
+          <div className="relative flex-1 max-w-md">
+            <Search size={14} className="absolute left-4 top-1/2 -translate-y-1/2 text-text-secondary/60" />
+            <input
+              type="text"
+              placeholder="Buscar por fornecedor ou processo..."
+              className="w-full bg-surface-hover border border-border/40 rounded-xl pl-11 pr-4 py-2 text-xs font-bold outline-none focus:border-primary/50 transition-all shadow-inner"
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+            />
           </div>
-        </div>
-
-        <div className="relative">
-          <Search size={14} className="absolute left-4 top-1/2 -translate-y-1/2 text-text-secondary" />
-          <input
-            type="text"
-            placeholder="Buscar..."
-            className="w-full bg-surface border border-border/50 rounded-2xl pl-11 pr-4 py-3 text-xs font-bold outline-none focus:border-primary focus:ring-4 focus:ring-primary/5 transition-all shadow-inner"
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-          />
         </div>
       </div>
 
       {/* Lista de Recibos em Grade/Lista */}
-      <div className="flex-1 overflow-y-auto p-3 md:p-4 space-y-3 no-scrollbar">
+      <div className="flex-1 overflow-y-auto space-y-2 no-scrollbar">
         <AnimatePresence mode="popLayout">
           {filteredRecibos.length > 0 ? (
-            filteredRecibos.map((recibo, index) => (
-              <motion.button
-                layout
-                initial={{ opacity: 0, scale: 0.98 }}
-                animate={{ opacity: 1, scale: 1 }}
-                exit={{ opacity: 0, scale: 0.95 }}
-                key={`${recibo.id}-${index}`}
-                onClick={() => setSelectedRecibo(recibo)}
-                className="w-full text-left p-3 md:p-4 rounded-2xl border border-border/50 bg-surface/40 hover:bg-surface-hover hover:border-primary/30 transition-all group relative"
-              >
-                <div className="flex items-center gap-3 md:gap-4">
-                  <div className="w-10 h-10 md:w-12 md:h-12 rounded-xl md:rounded-2xl bg-emerald-500/10 text-emerald-500 flex items-center justify-center shrink-0 group-hover:scale-110 transition-transform shadow-sm">
-                    <CheckSquare size={18} className="md:size-5" />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center justify-between mb-1 gap-2">
-                      <p className="text-xs md:text-sm font-black text-text-primary truncate pr-2">
-                        {recibo.nome_receptor}
-                      </p>
-                      <span className="text-[8px] md:text-[9px] font-black bg-emerald-500/10 text-emerald-500 px-2 py-0.5 rounded-full uppercase shrink-0">
-                        {recibo.status || 'recebido'}
-                      </span>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              {filteredRecibos.map((recibo, index) => (
+                <motion.button
+                  layout
+                  initial={{ opacity: 0, scale: 0.98 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  exit={{ opacity: 0, scale: 0.95 }}
+                  key={`${recibo.id}-${index}`}
+                  onClick={() => setSelectedRecibo(recibo)}
+                  className="w-full text-left p-3 rounded-xl border border-border/40 bg-surface/40 hover:bg-surface-hover hover:border-primary/20 transition-all group relative"
+                >
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-xl bg-emerald-500/10 text-emerald-500 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
+                      <CheckSquare size={18} />
                     </div>
-                    
-                    <div className="flex flex-wrap items-center gap-2 md:gap-3 text-[9px] md:text-[10px] text-text-secondary font-bold">
-                      <div className="flex items-center gap-1.5 whitespace-nowrap">
-                        <Clock size={10} className="md:size-3 opacity-50" />
-                        {recibo.data_hora_recebimento}
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center justify-between mb-0.5 gap-2">
+                        <p className="text-xs font-black text-text-primary truncate">
+                          {recibo.nome_receptor}
+                        </p>
+                        <span className="text-[8px] font-black bg-emerald-500/10 text-emerald-500 px-1.5 py-0.5 rounded uppercase shrink-0">
+                          {recibo.status || 'recebido'}
+                        </span>
                       </div>
-                      <div className="flex items-center gap-1.5 text-primary whitespace-nowrap">
-                        <Hash size={10} className="md:size-3 opacity-50" />
-                        {recibo.processo_numero}
+                      
+                      <div className="flex items-center gap-3 text-[9px] text-text-secondary font-bold">
+                        <div className="flex items-center gap-1">
+                          <Clock size={10} className="opacity-50" />
+                          {recibo.data_hora_recebimento}
+                        </div>
+                        <div className="flex items-center gap-1 text-primary">
+                          <Hash size={10} className="opacity-50" />
+                          {recibo.processo_numero}
+                        </div>
                       </div>
                     </div>
                   </div>
-                  <ChevronRight size={16} className="text-text-secondary/20 group-hover:text-primary group-hover:translate-x-1 transition-all shrink-0" />
-                </div>
-              </motion.button>
-            ))
+                </motion.button>
+              ))}
+            </div>
           ) : (
             <div className="py-20 text-center flex flex-col items-center">
               <div className="w-16 h-16 rounded-3xl bg-surface-hover flex items-center justify-center mb-4 border border-border/50">

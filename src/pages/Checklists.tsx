@@ -119,6 +119,36 @@ const Checklists = ({
     setChecklistPage(1);
   };
 
+  const getNextProcessNumber = () => {
+    if (!checklistRecords || checklistRecords.length === 0) return '';
+    
+    const numbers = checklistRecords
+      .map(r => {
+        // Try to find the first sequence of digits
+        const match = r.processNumber.match(/(\d+)/);
+        return match ? parseInt(match[0], 10) : null;
+      })
+      .filter((n): n is number => n !== null);
+
+    if (numbers.length === 0) return '';
+    
+    const maxNum = Math.max(...numbers);
+    const nextNum = maxNum + 1;
+
+    // Check if the latest one had a suffix like /2024
+    const latestRecord = checklistRecords.find(r => {
+      const match = r.processNumber.match(/(\d+)/);
+      return match && parseInt(match[0], 10) === maxNum;
+    });
+
+    if (latestRecord && latestRecord.processNumber.includes('/')) {
+      const suffix = latestRecord.processNumber.split('/')[1];
+      return `${nextNum}/${suffix}`;
+    }
+
+    return nextNum.toString();
+  };
+
   const totalProcessos = filteredChecklists.length;
   const totalConcluidos = filteredChecklists.filter(i => i.status === 'concluido').length;
   const totalPendentes = filteredChecklists.filter(i => i.status === 'pendente').length;
@@ -409,10 +439,11 @@ const Checklists = ({
         {canAdd && (
           <button
             onClick={() => {
+              const nextProcess = getNextProcessNumber();
               setEditingChecklist(null);
               setNewChecklistData({
                 prefeituraId: '1',
-                processNumber: '',
+                processNumber: nextProcess,
                 contractNumber: '',
                 vendor: '',
                 object: '',
@@ -465,10 +496,11 @@ const Checklists = ({
             {canAdd && (
               <button
                 onClick={() => {
+                  const nextProcess = getNextProcessNumber();
                   setEditingChecklist(null);
                   setNewChecklistData({
                     prefeituraId: '1',
-                    processNumber: '',
+                    processNumber: nextProcess,
                     contractNumber: '',
                     vendor: '',
                     object: '',
@@ -678,7 +710,7 @@ const Checklists = ({
               </div>
               
               <div className="p-8 space-y-8">
-                <div className="grid grid-cols-2 gap-8">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-8">
                   <div className="space-y-1">
                     <p className="text-[10px] font-black uppercase tracking-widest text-text-secondary">Confirmado por</p>
                     <p className="text-sm font-bold text-text-primary">{selectedConfirmation.nome_confirmante}</p>
@@ -695,7 +727,7 @@ const Checklists = ({
                   <div className="space-y-4">
                     <div className="p-4 bg-surface-hover/40 border border-border rounded-2xl">
                       <p className="text-[10px] font-black uppercase tracking-widest text-text-secondary mb-3">Informações do Processo</p>
-                      <div className="grid grid-cols-2 gap-4">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
                         <div>
                           <p className="text-[10px] text-text-secondary font-medium">Nº Processo</p>
                           <p className="text-sm font-black text-primary">{selectedConfirmation.checklist.processNumber}</p>
@@ -704,7 +736,7 @@ const Checklists = ({
                           <p className="text-[10px] text-text-secondary font-medium">Nº Contrato</p>
                           <p className="text-sm font-black text-text-primary">{selectedConfirmation.checklist.contractNumber}</p>
                         </div>
-                        <div className="col-span-2">
+                        <div className="sm:col-span-2">
                           <p className="text-[10px] text-text-secondary font-medium">Fornecedor</p>
                           <p className="text-sm font-bold text-text-primary">{selectedConfirmation.checklist.vendor}</p>
                         </div>

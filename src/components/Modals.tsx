@@ -312,7 +312,6 @@ export const Modals = ({
                         <th className="px-4 py-3 font-bold">Fornecedor</th>
                         <th className="px-4 py-3 font-bold">Objeto</th>
                         <th className="px-4 py-3 font-bold">Valor Nota</th>
-                        <th className="px-4 py-3 font-bold">Status</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-border print:divide-black/20">
@@ -322,16 +321,6 @@ export const Modals = ({
                           <td className="px-4 py-4 text-sm font-medium">{checklist.vendor}</td>
                           <td className="px-4 py-4 text-xs text-text-secondary max-w-[200px]">{checklist.object}</td>
                           <td className="px-4 py-4 text-sm font-black text-primary">{checklist.invoiceValue}</td>
-                          <td className="px-4 py-4">
-                            <span className={cn(
-                              "text-[10px] font-black px-2 py-1 rounded-md uppercase tracking-widest print:border print:border-black print:bg-transparent print:text-black",
-                              checklist.status === 'concluido' ? "bg-emerald-500/10 text-emerald-500" : 
-                              checklist.status === 'atencao' ? "bg-amber-500/10 text-amber-500" :
-                              "bg-blue-500/10 text-blue-500"
-                            )}>
-                              {(checklist.status || '').replace('_', ' ')}
-                            </span>
-                          </td>
                         </tr>
                       ))}
                     </tbody>
@@ -549,7 +538,12 @@ export const Modals = ({
               <div className="flex-1 overflow-y-auto p-4 sm:p-8 space-y-6 no-scrollbar">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6">
                   <div className="space-y-2">
-                    <label className="text-[10px] font-black text-text-secondary uppercase tracking-widest ml-1">Nº do Processo</label>
+                    <label className="text-[10px] font-black text-text-secondary uppercase tracking-widest ml-1 flex justify-between">
+                      <span>Nº do Processo</span>
+                      {!editingChecklist && newChecklistData.processNumber && (
+                        <span className="text-emerald-500 flex items-center gap-1"><Check size={10} /> Sugerido</span>
+                      )}
+                    </label>
                     <input 
                       type="text" 
                       placeholder="Ex: 2026/000123"
@@ -1350,7 +1344,6 @@ export const Modals = ({
                             <th className="px-6 py-4 font-black">Nº Processo</th>
                             <th className="px-6 py-4 font-black">Fornecedor</th>
                             <th className="px-6 py-4 font-black">Nota Fiscal</th>
-                            <th className="px-6 py-4 font-black">Status</th>
                             <th className="px-6 py-4 font-black text-center">Link Público</th>
                           </tr>
                         </thead>
@@ -1360,16 +1353,6 @@ export const Modals = ({
                               <td className="px-6 py-4 text-sm font-black text-primary">{checklist.processNumber}</td>
                               <td className="px-6 py-4 text-sm font-medium">{checklist.vendor}</td>
                               <td className="px-6 py-4 text-sm font-medium text-rose-500">{checklist.invoiceValue}</td>
-                              <td className="px-6 py-4">
-                                <span className={cn(
-                                  "text-[9px] font-black px-2.5 py-1 rounded-lg uppercase tracking-widest inline-block ring-1 ring-inset",
-                                  checklist.status === 'concluido' ? "bg-emerald-500/10 text-emerald-500 ring-emerald-500/20" : 
-                                  checklist.status === 'atencao' ? "bg-amber-500/10 text-amber-500 ring-amber-500/20" :
-                                  "bg-blue-500/10 text-blue-500 ring-blue-500/20"
-                                )}>
-                                  {(checklist.status || '').replace('_', ' ')}
-                                </span>
-                              </td>
                               <td className="px-6 py-4 text-center">
                                 <div className="relative inline-block">
                                   <button
