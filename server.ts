@@ -23,6 +23,13 @@ async function startServer() {
       return await fn();
     } catch (error: any) {
       const errorMsg = error?.message || String(error);
+      
+      // If it's a daily quota exhaustion, don't retry as it won't resolve for hours
+      const isQuotaExceeded = errorMsg.includes('Quota exceeded') || errorMsg.includes('quota');
+      if (isQuotaExceeded) {
+        throw error;
+      }
+
       const isRetryable = 
         errorMsg.includes('503') || 
         errorMsg.includes('UNAVAILABLE') || 
@@ -33,7 +40,6 @@ async function startServer() {
       if (isRetryable && retries > 0) {
         console.warn(`Gemini API error (retryable: ${errorMsg}). Retrying in ${delay}ms... (${retries} attempts left)`);
         await new Promise(resolve => setTimeout(resolve, delay));
-        // Exponential backoff with a cap at 20 seconds to stay within client timeout
         const nextDelay = Math.min(delay * 1.5, 20000);
         return withRetry(fn, retries - 1, nextDelay);
       }
@@ -68,9 +74,14 @@ async function startServer() {
       res.json({ text });
     } catch (error: any) {
       console.error(`[${requestId}] AI Error:`, error);
-      res.status(503).json({ 
-        error: "O serviço de IA está temporariamente sobrecarregado. Por favor, aguarde alguns instantes e tente novamente."
-      });
+      const errorMsg = error?.message || String(error || "");
+      const isQuotaExceeded = errorMsg.includes('Quota exceeded') || errorMsg.includes('quota');
+      
+      const message = isQuotaExceeded 
+        ? "O limite diário de uso da IA foi atingido. Tente novamente mais tarde."
+        : "O serviço de IA está temporariamente sobrecarregado. Por favor, aguarde alguns instantes e tente novamente.";
+        
+      res.status(isQuotaExceeded ? 429 : 503).json({ error: message });
     }
   });
 
@@ -117,11 +128,18 @@ async function startServer() {
       const errorMsg = error?.message || String(error || "Erro desconhecido");
       const isUnavailable = errorMsg.includes('503') || errorMsg.includes('UNAVAILABLE') || errorMsg.includes('high demand');
       const isRateLimit = errorMsg.includes('429') || errorMsg.includes('RESOURCE_EXHAUSTED');
+      const isQuotaExceeded = errorMsg.includes('Quota exceeded') || errorMsg.includes('quota');
       
       const status = isUnavailable ? 503 : (isRateLimit ? 429 : 500);
-      const userMessage = isRateLimit 
-        ? "Limite de requisições de IA atingido. Por favor, aguarde alguns minutos antes de tentar novamente."
-        : (isUnavailable ? "O serviço de IA está temporariamente sobrecarregado. Tente novamente em instantes." : errorMsg);
+      let userMessage = errorMsg;
+      
+      if (isQuotaExceeded) {
+        userMessage = "O limite diário de uso da IA foi atingido para este projeto. A funcionalidade será restabelecida automaticamente em algumas horas.";
+      } else if (isRateLimit) {
+        userMessage = "Limite de requisições de IA atingido. Por favor, aguarde alguns minutos antes de tentar novamente.";
+      } else if (isUnavailable) {
+        userMessage = "O serviço de IA está temporariamente sobrecarregado. Tente novamente em instantes.";
+      }
 
       res.status(status).json({ 
         error: userMessage

@@ -371,21 +371,24 @@ export default function App() {
   const [healthCheck, setHealthCheck] = useState<HealthCheckResult | null>(null);
   const [isCheckingHealth, setIsCheckingHealth] = useState(false);
 
-  const lastHealthCheckTime = React.useRef<number>(0);
-
+  // Persistent health check throttling to preserve API quota (20 RPD limit)
   const handleRunHealthCheck = async (force = false) => {
-    // Throttle automatic checks to once every 5 minutes to preserve API quota
     const now = Date.now();
-    const FIVE_MINUTES = 5 * 60 * 1000;
-    if (!force && now - lastHealthCheckTime.current < FIVE_MINUTES) {
-      return;
+    const SIX_HOURS = 6 * 60 * 60 * 1000;
+    const storageKey = `last_health_check_${currentUser?.prefeituraId || 'default'}`;
+    const lastCheck = parseInt(localStorage.getItem(storageKey) || '0');
+    
+    if (!force && now - lastCheck < SIX_HOURS) {
+      // If we already have a result in state, keep it. Otherwise, we might want to fetch it from Supabase 
+      // but for now, we just skip the AI call if it's too soon.
+      if (healthCheck) return;
     }
 
     setIsCheckingHealth(true);
     try {
-      const result = await runSmartHealthCheck(contracts, fuelRecords, dailyRecords, checklistRecords, currentUser);
+      const result = await runSmartHealthCheck(contracts, fuelRecords, dailyRecords, checklistRecords, currentUser!);
       setHealthCheck(result);
-      lastHealthCheckTime.current = Date.now();
+      localStorage.setItem(storageKey, now.toString());
     } catch (error) {
       console.error("Health check error:", error);
     } finally {

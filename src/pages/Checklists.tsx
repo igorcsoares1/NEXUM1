@@ -528,8 +528,8 @@ const Checklists = ({
             </button>
           </div>
 
-          <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
-            <div className="lg:col-span-3">
+          <div className="grid grid-cols-1 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+            <div className="lg:col-span-2 xl:col-span-3">
               {/* Desktop Table */}
               <div className="overflow-x-auto -mx-6 sm:mx-0">
                 <div className="inline-block min-w-full align-middle px-6 sm:px-0">
