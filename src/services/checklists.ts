@@ -175,6 +175,7 @@ export const handleSaveChecklist = async (
       object: newChecklistData.object,
       value: newChecklistData.value,
       invoiceValue: newChecklistData.invoiceValue,
+      invoiceNumber: newChecklistData.invoiceNumber,
       submissionDate: editingChecklist ? newChecklistData.submissionDate : new Date().toISOString().split('T')[0],
       status: finalStatus,
       currentSector: finalSector,
@@ -309,6 +310,7 @@ export const handleSaveChecklist = async (
       object: '',
       value: '',
       invoiceValue: '',
+      invoiceNumber: '',
       submissionDate: new Date().toISOString().split('T')[0],
       status: 'em_analise',
       items: [

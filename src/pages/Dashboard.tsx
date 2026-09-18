@@ -24,8 +24,9 @@ import {
 import { format, differenceInDays, parseISO } from 'date-fns';
 import { StatCard } from '../components/ui/StatCard';
 import { cn } from '../lib/utils';
-import { FuelRecord, DailyRecord, Contract, ChecklistItem, AuditItem, View } from '../types';
+import { FuelRecord, DailyRecord, Contract, ChecklistItem, AuditItem, View, SystemSettings } from '../types';
 import { parseCurrencyToNumber } from '../utils/format';
+import { generateAuditLogsPDF } from '../utils/pdf';
 
 interface DashboardProps {
   fuelRecords: FuelRecord[];
@@ -38,7 +39,8 @@ interface DashboardProps {
   setDashboardDateRange: (range: string) => void;
   chartData: any[];
   auditItems: AuditItem[];
-  addNotification: (message: string, type: 'success' | 'error' | 'info') => void;
+  addNotification: (title: string, message: string, type?: 'success' | 'error' | 'info' | 'warning') => void;
+  systemSettings: SystemSettings;
 }
 
 const Dashboard = ({
@@ -52,7 +54,8 @@ const Dashboard = ({
   setDashboardDateRange,
   chartData,
   auditItems,
-  addNotification
+  addNotification,
+  systemSettings
 }: DashboardProps) => {
   const totalFuelCost = fuelRecords.reduce((acc, record) => {
     const cost = parseCurrencyToNumber(record.cost);
@@ -91,18 +94,31 @@ const Dashboard = ({
     { name: 'Contratos', value: totalContractConsumption, color: '#10b981' },
   ];
 
+  const handleExportLogs = () => {
+    if (auditItems.length === 0) {
+      addNotification("Aviso", "Não há logs para exportar.", "info");
+      return;
+    }
+    generateAuditLogsPDF(auditItems, systemSettings);
+    addNotification("Sucesso", "Relatório de logs gerado com sucesso!", "success");
+  };
+
   return (
     <div className="flex flex-col flex-1 overflow-hidden">
       <div id="dashboard-content" className="flex flex-col flex-1 overflow-y-auto no-scrollbar pb-20 xl:pb-8">
 
-        {/* ── MOBILE DASHBOARD ──────────────────────────────── */}
-        <div className="flex flex-col xl:hidden p-4 space-y-4">
+        {/* ── MOBILE/TABLET DASHBOARD ───────────────────────── */}
+        <div className="flex flex-col xl:hidden p-4 sm:p-6 md:p-8 space-y-6">
+          <header className="px-1">
+            <h1 className="text-2xl sm:text-3xl font-black tracking-tight">Dashboard Operacional</h1>
+            <p className="text-text-secondary text-xs sm:text-sm font-medium mt-1">Gestão e indicadores municipais.</p>
+          </header>
 
           {criticalContracts.length > 0 && (
             <motion.div
-              initial={{ scale: 0.9, opacity: 0 }}
+              initial={{ scale: 0.95, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
-              className="relative p-5 rounded-[2rem] bg-rose-500 overflow-hidden shadow-2xl shadow-rose-500/30"
+              className="relative p-6 rounded-[2rem] bg-rose-500 overflow-hidden shadow-2xl shadow-rose-500/30"
             >
               <div className="absolute -top-10 -right-10 w-40 h-40 bg-white/10 rounded-full blur-3xl" />
               <div className="relative z-10">
@@ -116,8 +132,8 @@ const Dashboard = ({
                   {criticalContracts.length} contratos expiram em menos de 7 dias
                 </h4>
                 <button
-                  onClick={() => { setActiveView('contratos'); setContractFilter('vencendo30'); }}
-                  className="w-full py-3.5 bg-white text-rose-500 rounded-2xl font-black text-sm uppercase tracking-widest transition-all shadow-sm border border-zinc-200 hover:bg-zinc-50 active:scale-95"
+                  onClick={() => { setContractFilter('vencendo30'); }}
+                  className="w-full py-3.5 bg-white text-rose-500 rounded-2xl font-black text-sm uppercase tracking-widest transition-all shadow-sm hover:bg-zinc-50 active:scale-95"
                 >
                   Verificar agora
                 </button>
@@ -125,57 +141,88 @@ const Dashboard = ({
             </motion.div>
           )}
 
-          {/* Quick Stats Grid */}
-          <div className="grid grid-cols-2 gap-4">
-            <motion.div whileTap={{ scale: 0.95 }} className="bg-surface border border-border/60 p-5 rounded-[2rem] flex flex-col gap-4 shadow-sm">
-              <div className="w-10 h-10 bg-primary/10 rounded-xl flex items-center justify-center text-primary">
-                <Database size={20} />
-              </div>
-              <div>
-                <p className="text-[10px] font-black text-text-secondary uppercase tracking-widest leading-none mb-1.5">Total Contratos</p>
-                <p className="text-sm font-black truncate">{totalActiveContractsValue.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 })}</p>
-              </div>
-            </motion.div>
-            <motion.div whileTap={{ scale: 0.95 }} className="bg-surface border border-border/60 p-5 rounded-[2rem] flex flex-col gap-4 shadow-sm">
-              <div className="w-10 h-10 bg-emerald-500/10 rounded-xl flex items-center justify-center text-emerald-500">
-                <TrendingUp size={20} />
-              </div>
-              <div>
-                <p className="text-[10px] font-black text-text-secondary uppercase tracking-widest leading-none mb-1.5">Consumo Médio</p>
-                <p className="text-sm font-black">{budgetConsumptionPercent.toFixed(1)}%</p>
-              </div>
-            </motion.div>
+          {/* Quick Stats Grid - More responsive with md:grid-cols-4 */}
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <StatCard 
+              title="Total Contratos" 
+              value={totalActiveContractsValue.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 })} 
+              icon={<Database size={20} />} 
+              onClick={() => setActiveView('contratos')}
+            />
+            <StatCard 
+              title="Consumo Médio" 
+              value={`${budgetConsumptionPercent.toFixed(1)}%`} 
+              icon={<TrendingUp size={20} />} 
+              trend={{ value: budgetConsumptionPercent > 80 ? 'Alerta' : 'Estável', isPositive: budgetConsumptionPercent < 80 }}
+            />
+            <StatCard 
+              title="Combustível" 
+              value={totalFuelCost.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 })} 
+              icon={<Fuel size={20} />} 
+              onClick={() => setActiveView('combustivel')}
+            />
+            <StatCard 
+              title="Auditorias" 
+              value={checklistRecords.length.toString()} 
+              icon={<ClipboardCheck size={20} />} 
+              onClick={() => setActiveView('checklists')}
+            />
           </div>
 
-          {/* Charts Mobile */}
-          <section className="space-y-4">
-            <h3 className="text-lg font-black tracking-tight px-1">Distribuição de Gastos</h3>
-            <div className="bg-surface border border-border/60 rounded-[2.5rem] p-6">
-              <div className="h-[240px] w-full">
-                <ResponsiveContainer width="100%" height="100%">
-                  <PieChart>
-                    <Pie data={distributionData} cx="50%" cy="50%" innerRadius={60} outerRadius={85} paddingAngle={4} dataKey="value">
-                      {distributionData.map((entry, index) => <Cell key={`pie-cell-${entry.name}-${index}`} fill={entry.color} />)}
-                    </Pie>
-                    <Tooltip contentStyle={{ backgroundColor: '#ffffff', border: 'none', borderRadius: '16px', boxShadow: '0 10px 15px -3px rgba(0,0,0,0.1)' }} itemStyle={{ color: '#0f172a' }} labelStyle={{ color: '#64748b' }} />
-                  </PieChart>
-                </ResponsiveContainer>
-              </div>
-              <div className="grid grid-cols-1 gap-3 mt-4">
-                {distributionData.map((item, index) => (
-                  <div key={`mob-distribution-${item.name}-${index}`} className="flex items-center justify-between bg-surface-hover/30 p-3 rounded-2xl border border-border/20">
-                    <div className="flex items-center gap-2">
-                      <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: item.color }} />
-                      <span className="text-xs font-bold text-text-secondary">{item.name}</span>
+          {/* Charts Mobile/Tablet */}
+          <section className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="space-y-4">
+              <h3 className="text-lg font-black tracking-tight px-1">Distribuição de Gastos</h3>
+              <div className="bg-surface border border-border/60 rounded-[2.5rem] p-6 h-full flex flex-col justify-between shadow-sm">
+                <div className="h-[200px] w-full">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <PieChart>
+                      <Pie data={distributionData} cx="50%" cy="50%" innerRadius={50} outerRadius={75} paddingAngle={4} dataKey="value">
+                        {distributionData.map((entry, index) => <Cell key={`pie-cell-${entry.name}-${index}`} fill={entry.color} />)}
+                      </Pie>
+                      <Tooltip contentStyle={{ backgroundColor: '#ffffff', border: 'none', borderRadius: '16px', boxShadow: '0 10px 15px -3px rgba(0,0,0,0.1)' }} itemStyle={{ color: '#0f172a' }} labelStyle={{ color: '#64748b' }} />
+                    </PieChart>
+                  </ResponsiveContainer>
+                </div>
+                <div className="grid grid-cols-1 gap-2 mt-4">
+                  {distributionData.map((item, index) => (
+                    <div key={`mob-distribution-${item.name}-${index}`} className="flex items-center justify-between bg-surface-hover/30 p-2.5 rounded-xl border border-border/20">
+                      <div className="flex items-center gap-2">
+                        <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: item.color }} />
+                        <span className="text-[10px] font-bold text-text-secondary uppercase">{item.name}</span>
+                      </div>
+                      <span className="text-[10px] font-black">{item.value.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</span>
                     </div>
-                    <span className="text-xs font-black">{item.value.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</span>
-                  </div>
-                ))}
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            <div className="space-y-4">
+              <div className="flex justify-between items-end px-1">
+                <h3 className="text-lg font-black tracking-tight">Evolução</h3>
+                <select value={dashboardDateRange} onChange={(e) => setDashboardDateRange(e.target.value)} className="bg-surface border border-border rounded-lg px-2 py-1 text-[10px] font-black uppercase tracking-widest outline-none">
+                  <option value="3months">3M</option>
+                  <option value="6months">6M</option>
+                  <option value="12months">1A</option>
+                </select>
+              </div>
+              <div className="bg-surface border border-border/60 rounded-[2.5rem] p-6 h-[280px] shadow-sm">
+                <ResponsiveContainer width="100%" height="100%">
+                  <AreaChart data={chartData}>
+                    <defs><linearGradient id="mobGrad" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="#0ea5e9" stopOpacity={0.1} /><stop offset="95%" stopColor="#0ea5e9" stopOpacity={0} /></linearGradient></defs>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" vertical={false} />
+                    <XAxis dataKey="name" stroke="#64748b" fontSize={9} fontWeight={700} axisLine={false} tickLine={false} dy={10} />
+                    <YAxis stroke="#64748b" fontSize={9} fontWeight={700} axisLine={false} tickLine={false} hide />
+                    <Tooltip contentStyle={{ backgroundColor: '#ffffff', border: 'none', borderRadius: '16px', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1)' }} />
+                    <Area type="monotone" dataKey="value" stroke="#0ea5e9" strokeWidth={3} fill="url(#mobGrad)" />
+                  </AreaChart>
+                </ResponsiveContainer>
               </div>
             </div>
           </section>
 
-          {/* Recent Audits Feed */}
+          {/* Recent Audits Feed Mobile */}
           <section className="space-y-4">
             <div className="flex justify-between items-end px-1">
               <h3 className="text-lg font-black tracking-tight">Atividade Recente</h3>
@@ -183,21 +230,25 @@ const Dashboard = ({
                 Ver todas
               </button>
             </div>
-            <div className="space-y-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               {auditItems.slice(0, 4).map((item, idx) => (
-                <div key={`mob-audit-feed-${item.id || idx}`} className="flex items-center gap-4 p-4 rounded-3xl bg-surface border border-border/40 transition-all">
+                <div 
+                  key={`mob-audit-feed-${item.id || idx}`} 
+                  onClick={() => setActiveView(item.type === 'fuel' ? 'combustivel' : item.type === 'checklist' ? 'checklists' : item.type === 'daily' ? 'diarias' : 'contratos')}
+                  className="flex items-center gap-4 p-4 rounded-3xl bg-surface border border-border/40 transition-all active:scale-[0.98] cursor-pointer"
+                >
                   <div className={cn(
-                    "w-12 h-12 rounded-2xl flex items-center justify-center shrink-0 shadow-inner",
+                    "w-11 h-11 rounded-2xl flex items-center justify-center shrink-0 shadow-inner",
                     item.type === 'fuel' && "bg-blue-500/10 text-blue-500",
                     item.type === 'checklist' && "bg-emerald-500/10 text-emerald-500",
                     item.type === 'daily' && "bg-amber-500/10 text-amber-500",
                     item.type === 'contract' && "bg-rose-500/10 text-rose-500",
                   )}>
-                    <Clock size={20} />
+                    <Clock size={18} />
                   </div>
                   <div className="flex-1 min-w-0">
-                    <p className="text-sm font-black truncate leading-tight">{item.title}</p>
-                    <p className="text-[10px] text-text-secondary font-bold uppercase tracking-wider mt-0.5">{item.time} • {item.user}</p>
+                    <p className="text-xs font-black truncate leading-tight">{item.title}</p>
+                    <p className="text-[10px] text-text-secondary font-bold uppercase tracking-wider mt-0.5">{item.time}</p>
                   </div>
                 </div>
               ))}
@@ -212,6 +263,14 @@ const Dashboard = ({
               <h1 className="text-4xl font-black tracking-tighter">Dashboard Operacional</h1>
               <p className="text-text-secondary font-medium text-lg">Central de monitoramento e indicadores de gestão municipal.</p>
             </div>
+            <div className="flex items-center gap-3">
+               <button onClick={handleExportLogs} className="px-5 py-2.5 rounded-xl font-black uppercase text-[10px] tracking-widest bg-surface border border-border hover:bg-surface-hover transition-all active:scale-95 shadow-sm">
+                  Exportar Logs
+               </button>
+               <button onClick={() => setActiveView('relatorios')} className="px-5 py-2.5 rounded-xl font-black uppercase text-[10px] tracking-widest btn-primary">
+                  Relatórios
+               </button>
+            </div>
           </header>
 
           {criticalContracts.length > 0 && (
@@ -223,25 +282,46 @@ const Dashboard = ({
                 </div>
                 <p className="text-text-secondary">Identificamos <strong>{criticalContracts.length} contratos</strong> com vigência expirando nos próximos 7 dias.</p>
               </div>
-              <button onClick={() => { setActiveView('contratos'); setContractFilter('vencendo30'); }} className="px-8 py-3 bg-rose-500 text-white font-black uppercase text-xs tracking-widest rounded-2xl hover:bg-rose-600 transition-all shadow-lg shadow-rose-500/20 active:scale-95">Acessar Contratos</button>
+              <button onClick={() => { setContractFilter('vencendo30'); }} className="px-8 py-3 bg-rose-500 text-white font-black uppercase text-xs tracking-widest rounded-2xl hover:bg-rose-600 transition-all shadow-lg shadow-rose-500/20 active:scale-95">Acessar Contratos</button>
             </motion.div>
           )}
 
-          <div className="grid grid-cols-4 gap-6">
-            <StatCard title="Total em Vigor" value={totalActiveContractsValue.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })} icon={<Database size={24} />} />
-            <StatCard title="Consumo Mensal" value={totalFuelCost.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })} icon={<Fuel size={24} />} />
-            <StatCard title="Orçamentário" value={`${budgetConsumptionPercent.toFixed(1)}%`} icon={<BarChart3 size={24} />} trend={{ value: budgetConsumptionPercent > 80 ? 'Alerta' : 'Estável', isPositive: budgetConsumptionPercent < 80 }} />
-            <StatCard title="Auditorias" value={checklistRecords.length.toString()} icon={<ClipboardCheck size={24} />} trend={{ value: '+12%', isPositive: true }} />
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-6">
+            <StatCard 
+              title="Total em Vigor" 
+              value={totalActiveContractsValue.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })} 
+              icon={<Database size={24} />} 
+              onClick={() => setActiveView('contratos')}
+            />
+            <StatCard 
+              title="Consumo Mensal" 
+              value={totalFuelCost.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })} 
+              icon={<Fuel size={24} />} 
+              onClick={() => setActiveView('combustivel')}
+            />
+            <StatCard 
+              title="Orçamentário" 
+              value={`${budgetConsumptionPercent.toFixed(1)}%`} 
+              icon={<BarChart3 size={24} />} 
+              trend={{ value: budgetConsumptionPercent > 80 ? 'Alerta' : 'Estável', isPositive: budgetConsumptionPercent < 80 }} 
+            />
+            <StatCard 
+              title="Auditorias" 
+              value={checklistRecords.length.toString()} 
+              icon={<ClipboardCheck size={24} />} 
+              onClick={() => setActiveView('checklists')}
+              trend={{ value: '+12%', isPositive: true }} 
+            />
           </div>
 
-          <div className="grid grid-cols-3 gap-8">
-            <div className="col-span-2 glass-card p-8">
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+            <div className="lg:col-span-2 glass-card p-8">
               <div className="flex justify-between items-center mb-8">
                 <div>
                   <h3 className="text-xl font-black tracking-tight">Evolução de Despesas</h3>
                   <p className="text-text-secondary text-sm font-medium">Histórico consolidado nos últimos meses</p>
                 </div>
-                <select value={dashboardDateRange} onChange={(e) => setDashboardDateRange(e.target.value)} className="bg-surface border border-border rounded-xl px-4 py-2 text-xs font-black uppercase tracking-widest outline-none focus:border-primary">
+                <select value={dashboardDateRange} onChange={(e) => setDashboardDateRange(e.target.value)} className="bg-surface border border-border rounded-xl px-4 py-2 text-xs font-black uppercase tracking-widest outline-none focus:border-primary cursor-pointer">
                   <option value="3months">3 Meses</option>
                   <option value="6months">6 Meses</option>
                   <option value="12months">1 ano</option>
@@ -287,16 +367,20 @@ const Dashboard = ({
             </div>
           </div>
 
-          <div className="grid grid-cols-3 gap-8 pb-12">
-            <div className="col-span-2 glass-card p-8">
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 pb-12">
+            <div className="lg:col-span-2 glass-card p-8">
               <div className="flex justify-between items-center mb-8">
                 <h3 className="text-xl font-black tracking-tight">Timeline de Auditoria</h3>
-                <button className="px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest btn-surface">Exportar Logs</button>
+                <button onClick={handleExportLogs} className="px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest btn-surface">Exportar Logs</button>
               </div>
-              <div className="grid grid-cols-2 gap-4">
-                {auditItems.map((item, idx) => (
-                  <div key={`dash-audit-${item.id}-${idx}`} className="flex items-center gap-4 p-5 bg-surface-hover/30 border border-border rounded-2xl hover:border-primary/40 hover:bg-surface-hover/50 transition-all group cursor-pointer">
-                    <div className={cn("p-3 rounded-xl", item.type === 'fuel' && "bg-blue-500/10 text-blue-500", item.type === 'checklist' && "bg-emerald-500/10 text-emerald-500", item.type === 'daily' && "bg-amber-500/10 text-amber-500", item.type === 'contract' && "bg-rose-500/10 text-rose-500")}>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                {auditItems.slice(0, 6).map((item, idx) => (
+                  <div 
+                    key={`dash-audit-${item.id}-${idx}`} 
+                    onClick={() => setActiveView(item.type === 'fuel' ? 'combustivel' : item.type === 'checklist' ? 'checklists' : item.type === 'daily' ? 'diarias' : 'contratos')}
+                    className="flex items-center gap-4 p-5 bg-surface-hover/30 border border-border rounded-2xl hover:border-primary/40 hover:bg-surface-hover/50 transition-all group cursor-pointer"
+                  >
+                    <div className={cn("p-3 rounded-xl shadow-inner", item.type === 'fuel' && "bg-blue-500/10 text-blue-500", item.type === 'checklist' && "bg-emerald-500/10 text-emerald-500", item.type === 'daily' && "bg-amber-500/10 text-amber-500", item.type === 'contract' && "bg-rose-500/10 text-rose-500")}>
                       <Clock size={20} />
                     </div>
                     <div className="flex-1 min-w-0">
@@ -314,7 +398,7 @@ const Dashboard = ({
               </div>
               <h4 className="text-2xl font-black tracking-tighter mb-3">Relatórios Dinâmicos</h4>
               <p className="text-text-secondary font-medium mb-8">Acesse análises customizadas e exporte dados para apresentações em PDF ou Excel.</p>
-              <button onClick={() => setActiveView('relatorios')} className="w-full py-4 rounded-2xl font-black uppercase tracking-widest text-xs btn-primary">Ir para Relatórios</button>
+              <button onClick={() => setActiveView('relatorios')} className="w-full py-4 rounded-2xl font-black uppercase tracking-widest text-xs btn-primary shadow-lg shadow-primary/20">Ir para Relatórios</button>
             </div>
           </div>
         </div>

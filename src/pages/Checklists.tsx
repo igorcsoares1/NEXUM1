@@ -51,6 +51,7 @@ interface ChecklistsProps {
   setEditingChecklist: (item: any) => void;
   setNewChecklistData: (data: any) => void;
   confirmations: any[];
+  currentUser: any;
   checklistFilters: {
     status: string;
     vendor: string;
@@ -92,7 +93,8 @@ const Checklists = ({
   setShowDeleteConfirm,
   setEditingChecklist,
   setNewChecklistData,
-  confirmations
+  confirmations,
+  currentUser
 }: ChecklistsProps) => {
   const [showMobileMenu, setShowMobileMenu] = useState(false);
   const [showFilterModal, setShowFilterModal] = useState(false);
@@ -149,10 +151,35 @@ const Checklists = ({
     return nextNum.toString();
   };
 
-  const totalProcessos = filteredChecklists.length;
-  const totalConcluidos = filteredChecklists.filter(i => i.status === 'concluido').length;
-  const totalPendentes = filteredChecklists.filter(i => i.status === 'pendente').length;
-  const totalAndamento = totalProcessos - totalConcluidos - totalPendentes;
+  const statsBaseList = checklistRecords.filter(item => {
+    const matchesSearch = 
+      item.contractNumber.toLowerCase().includes(checklistSearch.toLowerCase()) ||
+      item.processNumber.toLowerCase().includes(checklistSearch.toLowerCase()) ||
+      item.vendor.toLowerCase().includes(checklistSearch.toLowerCase()) ||
+      item.object.toLowerCase().includes(checklistSearch.toLowerCase());
+    
+    const matchesVendor = !checklistFilters.vendor || item.vendor.toLowerCase().includes(checklistFilters.vendor.toLowerCase());
+    
+    let matchesDate = true;
+    if (checklistFilters.startDate && checklistFilters.endDate) {
+      matchesDate = item.submissionDate >= checklistFilters.startDate && item.submissionDate <= checklistFilters.endDate;
+    }
+
+    return matchesSearch && matchesVendor && matchesDate;
+  });
+
+  const totalProcessosCount = statsBaseList.length;
+  const totalConcluidosCount = statsBaseList.filter(i => i.status === 'concluido').length;
+  const totalPendentesCount = statsBaseList.filter(i => i.status === 'pendente').length;
+  const totalAndamentoCount = totalProcessosCount - totalConcluidosCount - totalPendentesCount;
+
+  const toggleStatusFilter = (status: string) => {
+    setChecklistFilters({
+      ...checklistFilters,
+      status: checklistFilters.status === status ? '' : status
+    });
+    setChecklistPage(1);
+  };
 
   const getStatusConfig = (status: string) => {
     switch(status) {
@@ -224,7 +251,7 @@ const Checklists = ({
               {/* Metrics Badge */}
               <div className="flex items-center gap-1.5 bg-surface border border-border rounded-full px-3 py-1.5">
                 <span className="w-1.5 h-1.5 rounded-full bg-primary"></span>
-                <span className="text-xs font-black">{totalProcessos}</span>
+                <span className="text-xs font-black">{filteredChecklists.length}</span>
               </div>
               {/* 3-dot menu */}
               <div className="relative">
@@ -296,7 +323,7 @@ const Checklists = ({
               )}
             >
               <span className="text-[10px] font-black uppercase tracking-wider">Processos</span>
-              <span className="text-xs font-black">{totalProcessos}</span>
+              <span className="text-xs font-black">{filteredChecklists.length}</span>
             </button>
             <button 
               onClick={() => setActiveTab('recibos')}
@@ -365,9 +392,14 @@ const Checklists = ({
                           </p>
 
                           {/* Row 3: Contract number */}
-                          <p className="text-xs text-text-secondary mt-0.5 truncate">
-                            Contrato: <span className="font-bold text-text-secondary/80">{item.contractNumber}</span>
-                          </p>
+                          <div className="flex flex-wrap gap-x-4 gap-y-1 mt-0.5">
+                            <p className="text-xs text-text-secondary truncate">
+                              Contrato: <span className="font-bold text-text-secondary/80">{item.contractNumber}</span>
+                            </p>
+                            <p className="text-xs text-text-secondary truncate">
+                              Nota: <span className="font-bold text-rose-500">{item.invoiceNumber || '-'}</span>
+                            </p>
+                          </div>
 
                           {/* Row 4: Action bar */}
                           <div className="flex items-center gap-3 mt-3">
@@ -414,7 +446,7 @@ const Checklists = ({
                 </div>
               )
             ) : (
-              <RecibosDigitaisComponent />
+              <RecibosDigitaisComponent currentUser={currentUser} />
             )}
           </div>
 
@@ -449,6 +481,7 @@ const Checklists = ({
                 object: '',
                 value: '',
                 invoiceValue: '',
+                invoiceNumber: '',
                 submissionDate: new Date().toISOString().split('T')[0],
                 status: 'em_analise',
                 items: [
@@ -506,6 +539,7 @@ const Checklists = ({
                     object: '',
                     value: '',
                     invoiceValue: '',
+                    invoiceNumber: '',
                     submissionDate: new Date().toISOString().split('T')[0],
                     status: 'em_analise',
                    });
@@ -519,163 +553,253 @@ const Checklists = ({
           </div>
         </div>
 
+        {/* Desktop Tabs */}
+        <div className="flex items-center gap-4 border-b border-border/60 pb-1">
+          <button
+            onClick={() => setActiveTab('processos')}
+            className={cn(
+              "px-4 py-2 text-sm font-black uppercase tracking-widest transition-all relative",
+              activeTab === 'processos' ? "text-primary" : "text-text-secondary hover:text-text-primary"
+            )}
+          >
+            Processos
+            {activeTab === 'processos' && (
+              <motion.div layoutId="activeTabDesktop" className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary rounded-full" />
+            )}
+          </button>
+          <button
+            onClick={() => setActiveTab('recibos')}
+            className={cn(
+              "px-4 py-2 text-sm font-black uppercase tracking-widest transition-all relative",
+              activeTab === 'recibos' ? "text-primary" : "text-text-secondary hover:text-text-primary"
+            )}
+          >
+            Recibos Digitais
+            {activeTab === 'recibos' && (
+              <motion.div layoutId="activeTabDesktop" className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary rounded-full" />
+            )}
+          </button>
+        </div>
+
         {/* Desktop Stats */}
         <div className="grid grid-cols-4 gap-4 print:hidden">
-          <div className="bg-surface border border-border rounded-xl p-4">
+          <div 
+            onClick={() => toggleStatusFilter('')}
+            className={cn(
+              "bg-surface border rounded-xl p-4 cursor-pointer transition-all hover:border-primary/50 active:scale-[0.98]",
+              !checklistFilters.status ? "border-primary ring-1 ring-primary/20 shadow-lg" : "border-border"
+            )}
+          >
             <p className="text-[10px] text-text-secondary uppercase tracking-widest font-black mb-1">Total</p>
-            <p className="text-2xl font-black">{totalProcessos}</p>
+            <p className="text-2xl font-black">{totalProcessosCount}</p>
           </div>
-          <div className="bg-emerald-500/5 border border-emerald-500/20 rounded-xl p-4">
+          <div 
+            onClick={() => toggleStatusFilter('concluido')}
+            className={cn(
+              "border rounded-xl p-4 cursor-pointer transition-all hover:border-emerald-500/50 active:scale-[0.98]",
+              checklistFilters.status === 'concluido' ? "bg-emerald-500/10 border-emerald-500 ring-1 ring-emerald-500/20 shadow-lg" : "bg-emerald-500/5 border-emerald-500/20"
+            )}
+          >
             <p className="text-[10px] text-emerald-500 uppercase tracking-widest font-black mb-1">Concluídos</p>
-            <p className="text-2xl font-black text-emerald-500">{totalConcluidos}</p>
+            <p className="text-2xl font-black text-emerald-500">{totalConcluidosCount}</p>
           </div>
-          <div className="bg-amber-500/5 border border-amber-500/20 rounded-xl p-4">
+          <div 
+            onClick={() => toggleStatusFilter('andamento')}
+            className={cn(
+              "border rounded-xl p-4 cursor-pointer transition-all hover:border-amber-500/50 active:scale-[0.98]",
+              checklistFilters.status === 'andamento' ? "bg-amber-500/10 border-amber-500 ring-1 ring-amber-500/20 shadow-lg" : "bg-amber-500/5 border-amber-500/20"
+            )}
+          >
             <p className="text-[10px] text-amber-500 uppercase tracking-widest font-black mb-1">Andamento</p>
-            <p className="text-2xl font-black text-amber-500">{totalAndamento}</p>
+            <p className="text-2xl font-black text-amber-500">{totalAndamentoCount}</p>
           </div>
-          <div className="bg-rose-500/5 border border-rose-500/20 rounded-xl p-4">
+          <div 
+            onClick={() => toggleStatusFilter('pendente')}
+            className={cn(
+              "border rounded-xl p-4 cursor-pointer transition-all hover:border-rose-500/50 active:scale-[0.98]",
+              checklistFilters.status === 'pendente' ? "bg-rose-500/10 border-rose-500 ring-1 ring-rose-500/20 shadow-lg" : "bg-rose-500/5 border-rose-500/20"
+            )}
+          >
             <p className="text-[10px] text-rose-500 uppercase tracking-widest font-black mb-1">Pendentes</p>
-            <p className="text-2xl font-black text-rose-500">{totalPendentes}</p>
+            <p className="text-2xl font-black text-rose-500">{totalPendentesCount}</p>
           </div>
         </div>
 
         <div className="glass-card overflow-hidden">
-          {/* Desktop Search */}
-          <div className="flex items-center gap-3 mb-6 print:hidden">
-            <div className="relative flex-1">
-              <Search size={20} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-text-secondary" />
-              <input
-                type="text"
-                placeholder="Buscar contrato ou processo..."
-                className="w-full bg-surface-hover border border-border rounded-xl pl-11 pr-4 py-3 outline-none focus:border-primary transition-all text-sm font-medium"
-                value={checklistSearch}
-                onChange={(e) => setChecklistSearch(e.target.value)}
-              />
-            </div>
-            <button
-              onClick={() => setShowFilterModal(true)}
-              className="px-5 py-3 border border-border rounded-xl hover:bg-surface-hover text-text-primary flex items-center gap-2 font-bold text-sm bg-surface"
-            >
-              <SlidersHorizontal size={18} /> Filtros
-            </button>
-          </div>
+          {activeTab === 'processos' ? (
+            <>
+              {/* Desktop Search */}
+              <div className="flex items-center gap-3 mb-6 print:hidden">
+                <div className="relative flex-1">
+                  <Search size={20} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-text-secondary" />
+                  <input
+                    type="text"
+                    placeholder="Buscar contrato ou processo..."
+                    className="w-full bg-surface-hover border border-border rounded-xl pl-11 pr-4 py-3 outline-none focus:border-primary transition-all text-sm font-medium"
+                    value={checklistSearch}
+                    onChange={(e) => setChecklistSearch(e.target.value)}
+                  />
+                </div>
+                <button
+                  onClick={() => setShowFilterModal(true)}
+                  className="px-5 py-3 border border-border rounded-xl hover:bg-surface-hover text-text-primary flex items-center gap-2 font-bold text-sm bg-surface"
+                >
+                  <SlidersHorizontal size={18} /> Filtros
+                </button>
+              </div>
 
-          <div className="grid grid-cols-1 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-            <div className="lg:col-span-2 xl:col-span-3">
-              {/* Desktop Table */}
-              <div className="overflow-x-auto -mx-6 sm:mx-0">
-                <div className="inline-block min-w-full align-middle px-6 sm:px-0">
-                  <table className="w-full text-left">
-                    <thead>
-                      <tr className="text-text-secondary text-[10px] uppercase tracking-widest border-b border-border">
-                        <th className="px-4 py-4 font-bold">Nº Processo</th>
-                        <th className="px-4 py-4 font-bold">Nº Contrato</th>
-                        <th className="px-4 py-4 font-bold">Fornecedor</th>
-                        <th className="px-4 py-4 font-bold max-w-[200px]">Objeto</th>
-                        <th className="px-4 py-4 font-bold">Valor Contrato</th>
-                        <th className="px-4 py-4 font-bold">Valor Nota</th>
-                        <th className="px-4 py-4 font-bold">Data Envio</th>
-                        <th className="px-4 py-4 font-bold">Status</th>
-                        <th className="px-4 py-4 font-bold text-right">Ações</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-border/50">
-                      {paginatedChecklists.length > 0 ? (
-                        paginatedChecklists.map((item, idx) => {
-                          const statusCfg = getStatusConfig(item.status);
-                          return (
-                            <tr key={`desktop-checklist-${item.id}-${idx}`} className="hover:bg-surface-hover/50 transition-colors border-b border-border/50 last:border-0">
-                              <td className="px-4 py-5">
-                                <div className="flex items-center gap-3">
-                                  <div className="p-2.5 bg-primary/10 rounded-xl text-primary shrink-0">
-                                    <FileText size={18} />
-                                  </div>
-                                  <p className="text-sm font-black tracking-tight whitespace-nowrap">{item.processNumber}</p>
-                                </div>
-                              </td>
-                              <td className="px-4 py-5 text-sm font-medium whitespace-nowrap">{item.contractNumber}</td>
-                              <td className="px-4 py-5 text-sm font-medium whitespace-nowrap">{item.vendor}</td>
-                              <td className="px-4 py-5 text-xs text-text-secondary font-medium max-w-[200px] truncate" title={item.object}>{item.object}</td>
-                              <td className="px-4 py-5 text-sm font-black tracking-tight whitespace-nowrap">{item.value}</td>
-                              <td className="px-4 py-5 text-sm font-black text-rose-500 tracking-tight whitespace-nowrap">
-                                {item.invoiceValue ? (item.invoiceValue.startsWith('R$') ? item.invoiceValue : `R$ ${item.invoiceValue}`) : '-'}
-                              </td>
-                              <td className="px-4 py-5 text-sm text-text-secondary font-medium whitespace-nowrap">
-                                {format(parseISO(item.submissionDate), 'dd/MM/yyyy', { locale: ptBR })}
-                              </td>
-                              <td className="px-4 py-5">
-                                <span className={cn(
-                                  "text-[10px] font-black px-2.5 py-1.5 rounded-lg uppercase tracking-widest flex items-center gap-1.5 w-fit",
-                                  statusCfg.color
-                                )}>
-                                  <span className={cn("w-1.5 h-1.5 rounded-full shrink-0", statusCfg.dot)}></span>
-                                  {statusCfg.text}
-                                </span>
-                              </td>
-                              <td className="px-4 py-5 text-right">
-                                <div className="flex justify-end gap-1">
-                                  <button
-                                    onClick={() => openDetails(item)}
-                                    className="px-3 py-1.5 bg-primary/10 text-primary text-[10px] font-black rounded-lg uppercase tracking-widest hover:bg-primary hover:text-white transition-all whitespace-nowrap"
-                                  >
-                                    Ver Detalhes
-                                  </button>
-                                  {canEdit && (
-                                    <button onClick={() => handleEditChecklist(item)} className="p-1.5 hover:bg-primary/10 rounded-lg text-primary transition-all" title="Editar">
-                                      <Settings size={16} />
-                                    </button>
-                                  )}
-                                  {canDelete && (
-                                    <button onClick={() => handleDeleteChecklist(item.id)} className="p-1.5 hover:bg-rose-500/10 rounded-lg text-rose-500 transition-all" title="Excluir">
-                                      <Trash2 size={16} />
-                                    </button>
-                                  )}
+              <div className="grid grid-cols-1 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+                <div className="lg:col-span-2 xl:col-span-3">
+                  {/* Desktop Table */}
+                  <div className="overflow-x-auto border border-border/60 rounded-2xl bg-surface/30 shadow-inner no-scrollbar">
+                    <div className="inline-block min-w-full align-middle">
+                      <table className="min-w-[1000px] w-full text-left border-collapse">
+                        <thead>
+                          <tr className="text-text-secondary text-[10px] font-black uppercase tracking-[0.15em] border-b border-border/60 bg-surface/50">
+                            <th className="px-6 py-5">Nº Processo</th>
+                            <th className="px-4 py-5">Contrato</th>
+                            <th className="px-4 py-5">Fornecedor</th>
+                            <th className="px-4 py-5">Nota</th>
+                            <th className="px-4 py-5 max-w-[200px]">Objeto</th>
+                            <th className="px-4 py-5">Valor</th>
+                            <th className="px-4 py-5">Data</th>
+                            <th className="px-4 py-5">Status</th>
+                            <th className="px-6 py-5 text-right">Ações</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-border/40">
+                          {paginatedChecklists.length > 0 ? (
+                            paginatedChecklists.map((item, idx) => {
+                              const statusCfg = getStatusConfig(item.status);
+                              return (
+                                <tr key={`desktop-checklist-${item.id}-${idx}`} className="hover:bg-primary/5 transition-all group">
+                                  <td className="px-6 py-5">
+                                    <div className="flex items-center gap-3">
+                                      <div className="p-2.5 bg-primary/10 rounded-xl text-primary shrink-0 group-hover:scale-110 transition-transform">
+                                        <FileText size={18} />
+                                      </div>
+                                      <p className="text-sm font-black tracking-tight whitespace-nowrap">{item.processNumber}</p>
+                                    </div>
+                                  </td>
+                                  <td className="px-4 py-5">
+                                    <p className="text-xs font-bold text-text-primary whitespace-nowrap">{item.contractNumber}</p>
+                                  </td>
+                                  <td className="px-4 py-5">
+                                    <p className="text-xs font-black text-text-primary truncate max-w-[150px]" title={item.vendor}>{item.vendor}</p>
+                                  </td>
+                                  <td className="px-4 py-5">
+                                    <p className="text-xs font-bold text-rose-500 whitespace-nowrap">{item.invoiceNumber || '-'}</p>
+                                  </td>
+                                  <td className="px-4 py-5">
+                                    <p className="text-[11px] text-text-secondary font-medium max-w-[180px] truncate leading-relaxed" title={item.object}>{item.object}</p>
+                                  </td>
+                                  <td className="px-4 py-5">
+                                    <div className="flex flex-col gap-0.5">
+                                      <p className="text-xs font-black text-text-primary">{item.value}</p>
+                                      {item.invoiceValue && (
+                                        <p className="text-[9px] font-black text-rose-500 uppercase tracking-tighter">Nota: {item.invoiceValue.startsWith('R$') ? item.invoiceValue : `R$ ${item.invoiceValue}`}</p>
+                                      )}
+                                    </div>
+                                  </td>
+                                  <td className="px-4 py-5">
+                                    <p className="text-[11px] text-text-secondary font-bold whitespace-nowrap">
+                                      {format(parseISO(item.submissionDate), 'dd/MM/yy', { locale: ptBR })}
+                                    </p>
+                                  </td>
+                                  <td className="px-4 py-5">
+                                    <span className={cn(
+                                      "text-[9px] font-black px-2.5 py-1.5 rounded-lg uppercase tracking-widest flex items-center gap-1.5 w-fit shadow-sm",
+                                      statusCfg.color
+                                    )}>
+                                      <span className={cn("w-1.5 h-1.5 rounded-full shrink-0 animate-pulse", statusCfg.dot)}></span>
+                                      {statusCfg.text}
+                                    </span>
+                                  </td>
+                                  <td className="px-6 py-5 text-right">
+                                    <div className="flex justify-end gap-1.5 opacity-40 group-hover:opacity-100 transition-opacity">
+                                      <button
+                                        onClick={() => openDetails(item)}
+                                        className="p-2 bg-primary/10 text-primary rounded-xl hover:bg-primary hover:text-white transition-all shadow-sm"
+                                        title="Detalhes"
+                                      >
+                                        <Search size={14} />
+                                      </button>
+                                      {canEdit && (
+                                        <button 
+                                          onClick={() => handleEditChecklist(item)} 
+                                          className="p-2 bg-surface-hover border border-border rounded-xl text-text-secondary hover:text-primary hover:border-primary/40 transition-all shadow-sm" 
+                                          title="Editar"
+                                        >
+                                          <Settings size={14} />
+                                        </button>
+                                      )}
+                                      {canDelete && (
+                                        <button 
+                                          onClick={() => handleDeleteChecklist(item.id)} 
+                                          className="p-2 bg-rose-500/10 text-rose-500 rounded-xl hover:bg-rose-500 hover:text-white transition-all shadow-sm" 
+                                          title="Excluir"
+                                        >
+                                          <Trash2 size={14} />
+                                        </button>
+                                      )}
+                                    </div>
+                                  </td>
+                                </tr>
+                              );
+                            })
+                          ) : (
+                            <tr>
+                              <td colSpan={9} className="px-4 py-20 text-center">
+                                <div className="flex flex-col items-center justify-center gap-2 opacity-30">
+                                  <FileText size={48} />
+                                  <p className="text-xs font-black uppercase tracking-widest">Nenhum processo</p>
                                 </div>
                               </td>
                             </tr>
-                          );
-                        })
-                      ) : (
-                        <tr>
-                          <td colSpan={9} className="px-4 py-12 text-center text-text-secondary">
-                            Nenhum processo encontrado.
-                          </td>
-                        </tr>
-                      )}
-                    </tbody>
-                  </table>
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+
+                  <PaginationControls
+                    currentPage={checklistPage}
+                    totalPages={Math.ceil(filteredChecklists.length / checklistPerPage)}
+                    onPageChange={setChecklistPage}
+                    itemsPerPage={checklistPerPage}
+                    onItemsPerPageChange={(val) => {
+                      setChecklistPerPage(val);
+                      setChecklistPage(1);
+                    }}
+                    totalItems={filteredChecklists.length}
+                    showingItems={paginatedChecklists.length}
+                    label="registros"
+                  />
+                </div>
+
+                {/* Sidebar for Confirmations */}
+                <div className="lg:col-span-1 border-l border-border/50 pl-6 flex flex-col">
+                  <div className="flex items-center justify-between mb-6">
+                    <h4 className="text-[10px] font-black uppercase tracking-widest text-text-secondary">Recibos Recentes</h4>
+                    <button 
+                      onClick={() => setActiveTab('recibos')}
+                      className="text-[9px] font-black px-1.5 py-0.5 bg-primary/10 text-primary rounded-md hover:bg-primary hover:text-white transition-all"
+                    >
+                      Ver Todos
+                    </button>
+                  </div>
+                  
+                  <div className="flex-1 min-h-0">
+                    <RecibosDigitaisComponent currentUser={currentUser} compact={true} />
+                  </div>
                 </div>
               </div>
-
-              <PaginationControls
-                currentPage={checklistPage}
-                totalPages={Math.ceil(filteredChecklists.length / checklistPerPage)}
-                onPageChange={setChecklistPage}
-                itemsPerPage={checklistPerPage}
-                onItemsPerPageChange={(val) => {
-                  setChecklistPerPage(val);
-                  setChecklistPage(1);
-                }}
-                totalItems={filteredChecklists.length}
-                showingItems={paginatedChecklists.length}
-                label="registros"
-              />
+            </>
+          ) : (
+            <div className="p-4">
+              <RecibosDigitaisComponent currentUser={currentUser} />
             </div>
-
-            {/* Sidebar for Confirmations */}
-            <div className="lg:col-span-1 border-l border-border/50 pl-6 flex flex-col">
-              <div className="flex items-center justify-between mb-6">
-                <h4 className="text-[10px] font-black uppercase tracking-widest text-text-secondary">Recibos Digitais</h4>
-                <div className="flex items-center gap-2">
-                  <span className="text-[9px] font-black px-1.5 py-0.5 bg-primary/10 text-primary rounded-md">Auditoria</span>
-                </div>
-              </div>
-              
-              <div className="flex-1 min-h-0">
-                <RecibosDigitaisComponent />
-              </div>
-            </div>
-          </div>
+          )}
         </div>
       </div>
 

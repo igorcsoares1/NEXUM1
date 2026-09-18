@@ -28,7 +28,8 @@ import {
   Database,
   Share2,
   ExternalLink,
-  Copy
+  Copy,
+  Hash
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { format, parseISO } from 'date-fns';
@@ -133,6 +134,27 @@ export const Modals = ({
   const [isSavingTramitation, setIsSavingTramitation] = React.useState(false);
   const [confirmations, setConfirmations] = React.useState<ChecklistConfirmation[]>([]);
   const [sharedId, setSharedId] = React.useState<string | null>(null);
+  const [contractSearchTerm, setContractSearchTerm] = React.useState('');
+  const [showContractDropdown, setShowContractDropdown] = React.useState(false);
+
+  const filteredContractsForSelection = React.useMemo(() => {
+    if (!contractSearchTerm) return contracts;
+    const lowerSearch = contractSearchTerm.toLowerCase();
+    return contracts.filter(c => 
+      (c.vendor && c.vendor.toLowerCase().includes(lowerSearch)) || 
+      (c.number && c.number.toLowerCase().includes(lowerSearch))
+    );
+  }, [contracts, contractSearchTerm]);
+
+  React.useEffect(() => {
+    if (showNewChecklistModal) {
+      if (editingChecklist) {
+        setContractSearchTerm(editingChecklist.vendor || '');
+      } else {
+        setContractSearchTerm('');
+      }
+    }
+  }, [showNewChecklistModal, editingChecklist]);
 
   React.useEffect(() => {
     if (showDetailsModal && selectedChecklist) {
@@ -565,35 +587,64 @@ export const Modals = ({
                   <div className="space-y-2">
                     <label className="text-[10px] font-black text-text-secondary uppercase tracking-widest ml-1">Fornecedor / Contrato</label>
                     <div className="relative">
-                      <select 
-                        className="w-full bg-surface-hover border border-border rounded-xl px-4 py-3.5 outline-none focus:border-primary transition-all font-bold text-sm appearance-none cursor-pointer shadow-inner pr-10"
-                        value={newChecklistData.contractNumber || ''}
-                        onChange={(e) => {
-                          const selectedContractNumber = e.target.value;
-                          const contract = contracts.find(c => c.number === selectedContractNumber);
-                          if (contract) {
-                            setNewChecklistData({
-                              ...newChecklistData,
-                              vendor: contract.vendor,
-                              contractNumber: contract.number,
-                              object: contract.object,
-                              value: contract.totalValue 
-                            });
-                          } else {
-                            setNewChecklistData({...newChecklistData, contractNumber: selectedContractNumber, vendor: ''});
-                          }
-                        }}
-                      >
-                        <option value="">Selecione um contrato...</option>
-                        {contracts.map((contract, index) => (
-                          <option key={`contract-option-${contract.id || index}`} value={contract.number}>
-                            {contract.vendor} — Contrato: {contract.number}
-                          </option>
-                        ))}
-                      </select>
-                      <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none text-text-secondary">
-                        <Plus size={18} className="rotate-45" />
+                      <div className="relative">
+                        <Search size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-text-secondary pointer-events-none" />
+                        <input 
+                          type="text"
+                          placeholder="Buscar por fornecedor ou contrato..."
+                          className="w-full bg-surface-hover border border-border rounded-xl pl-11 pr-4 py-3.5 outline-none focus:border-primary transition-all font-bold text-sm shadow-inner"
+                          value={contractSearchTerm}
+                          onChange={(e) => {
+                            setContractSearchTerm(e.target.value);
+                            setShowContractDropdown(true);
+                          }}
+                          onFocus={() => setShowContractDropdown(true)}
+                        />
                       </div>
+
+                      <AnimatePresence>
+                        {showContractDropdown && (
+                          <div key="contract-dropdown-wrapper">
+                            <div className="fixed inset-0 z-[110]" onClick={() => setShowContractDropdown(false)} />
+                            <motion.div
+                              initial={{ opacity: 0, y: 10, scale: 0.95 }}
+                              animate={{ opacity: 1, y: 0, scale: 1 }}
+                              exit={{ opacity: 0, y: 10, scale: 0.95 }}
+                              className="absolute top-full left-0 right-0 mt-2 bg-background border border-border rounded-2xl shadow-2xl z-[120] overflow-hidden max-h-[300px] flex flex-col"
+                            >
+                              <div className="overflow-y-auto no-scrollbar">
+                                {filteredContractsForSelection.length > 0 ? (
+                                  filteredContractsForSelection.map((contract) => (
+                                    <button
+                                      key={contract.id}
+                                      type="button"
+                                      className="w-full text-left px-4 py-3 hover:bg-surface-hover transition-colors flex flex-col gap-0.5 border-b border-border/50 last:border-0"
+                                      onClick={() => {
+                                        setNewChecklistData({
+                                          ...newChecklistData,
+                                          vendor: contract.vendor,
+                                          contractNumber: contract.number,
+                                          object: contract.object,
+                                          value: contract.totalValue 
+                                        });
+                                        setContractSearchTerm(contract.vendor);
+                                        setShowContractDropdown(false);
+                                      }}
+                                    >
+                                      <span className="text-sm font-black text-text-primary">{contract.vendor}</span>
+                                      <span className="text-[10px] font-bold text-text-secondary uppercase tracking-widest">Contrato: {contract.number}</span>
+                                    </button>
+                                  ))
+                                ) : (
+                                  <div className="p-4 text-center">
+                                    <p className="text-xs font-bold text-text-secondary">Nenhum contrato encontrado</p>
+                                  </div>
+                                )}
+                              </div>
+                            </motion.div>
+                          </div>
+                        )}
+                      </AnimatePresence>
                     </div>
                   </div>
                   
@@ -608,6 +659,17 @@ export const Modals = ({
                         const newInvoiceVal = processCurrencyInput(e.target.value);
                         setNewChecklistData({...newChecklistData, invoiceValue: newInvoiceVal});
                       }}
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-black text-text-secondary uppercase tracking-widest ml-1">Nº da Nota Fiscal</label>
+                    <input 
+                      type="text" 
+                      placeholder="Ex: 123456"
+                      className="w-full bg-surface-hover border border-border rounded-xl px-4 py-3.5 outline-none focus:border-primary transition-all font-bold text-sm shadow-inner"
+                      value={newChecklistData.invoiceNumber || ''}
+                      onChange={(e) => setNewChecklistData({...newChecklistData, invoiceNumber: e.target.value})}
                     />
                   </div>
 
@@ -1343,7 +1405,8 @@ export const Modals = ({
                           <tr className="bg-surface-hover/30 text-text-secondary text-[10px] uppercase tracking-widest border-b border-border">
                             <th className="px-6 py-4 font-black">Nº Processo</th>
                             <th className="px-6 py-4 font-black">Fornecedor</th>
-                            <th className="px-6 py-4 font-black">Nota Fiscal</th>
+                            <th className="px-6 py-4 font-black">Nº Nota</th>
+                            <th className="px-6 py-4 font-black text-rose-500">Valor Nota</th>
                             <th className="px-6 py-4 font-black text-center">Link Público</th>
                           </tr>
                         </thead>
@@ -1352,7 +1415,10 @@ export const Modals = ({
                             <tr key={`report-check-row-${checklist.id || idx}`} className="hover:bg-surface-hover/20 transition-colors">
                               <td className="px-6 py-4 text-sm font-black text-primary">{checklist.processNumber}</td>
                               <td className="px-6 py-4 text-sm font-medium">{checklist.vendor}</td>
-                              <td className="px-6 py-4 text-sm font-medium text-rose-500">{checklist.invoiceValue}</td>
+                              <td className="px-6 py-4 text-sm font-medium text-text-secondary">{checklist.invoiceNumber || '-'}</td>
+                              <td className="px-6 py-4 text-sm font-black text-rose-500">
+                                {checklist.invoiceValue ? (checklist.invoiceValue.startsWith('R$') ? checklist.invoiceValue : `R$ ${checklist.invoiceValue}`) : '-'}
+                              </td>
                               <td className="px-6 py-4 text-center">
                                 <div className="relative inline-block">
                                   <button
@@ -1440,6 +1506,13 @@ export const Modals = ({
                     <div className="flex items-center gap-2 text-rose-500">
                       <FileText size={18} />
                       <span className="text-sm font-black tracking-tight">{selectedChecklist.invoiceValue || 'Não informado'}</span>
+                    </div>
+                  </div>
+                  <div className="glass-card bg-surface-hover/30 border-border/50 p-4">
+                    <p className="text-[10px] font-black text-text-secondary uppercase tracking-widest mb-2">Nº da Nota</p>
+                    <div className="flex items-center gap-2 text-text-primary">
+                      <Hash size={18} className="text-primary" />
+                      <span className="text-sm font-black tracking-tight">{selectedChecklist.invoiceNumber || 'Não informado'}</span>
                     </div>
                   </div>
                 </div>

@@ -148,6 +148,7 @@ export interface ChecklistItem {
   object: string;
   value: string;
   invoiceValue?: string;
+  invoiceNumber?: string;
   submissionDate: string;
   status: 'concluido' | 'em_analise' | 'atencao' | 'pendente';
   currentSector?: string;

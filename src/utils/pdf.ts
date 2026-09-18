@@ -115,13 +115,18 @@ export const generateChecklistPDF = (checklist: any, systemSettings: any) => {
   autoTable(doc, {
     startY,
     theme: 'grid',
-    headStyles: { fillColor: [2, 132, 199] },
+    styles: { fontSize: 9, cellPadding: 4 },
+    columnStyles: {
+      0: { fontStyle: 'bold', fillColor: [248, 250, 252], cellWidth: 45 },
+      1: { cellWidth: 'auto' }
+    },
     body: [
       ['Nº do Processo', checklist.processNumber || '-'],
       ['Nº do Contrato', checklist.contractNumber || '-'],
       ['Fornecedor', checklist.vendor || '-'],
       ['Valor do Contrato', checklist.value || '-'],
       ['Valor da Nota', checklist.invoiceValue || '-'],
+      ['Nº da Nota', checklist.invoiceNumber || '-'],
       ['Objeto', checklist.object || '-']
     ],
   });
@@ -162,16 +167,27 @@ export const generateChecklistsReportPDF = (records: any[], title: string, syste
   const body = records.map(r => [
     r.processNumber || '-',
     r.vendor || '-',
+    r.invoiceNumber || '-',
     r.object || '-',
     r.invoiceValue || '-'
   ]);
   
   autoTable(doc, {
     startY,
-    head: [['Processo', 'Fornecedor', 'Objeto', 'Valor Nota']],
+    head: [['Processo', 'Fornecedor', 'Nº Nota', 'Objeto', 'Valor Nota']],
     body,
     theme: 'striped',
-    headStyles: { fillColor: [2, 132, 199] },
+    headStyles: { fillColor: [2, 132, 199], fontStyle: 'bold' },
+    alternateRowStyles: { fillColor: [248, 250, 252] },
+    styles: { fontSize: 8, cellPadding: 3, valign: 'middle' },
+    columnStyles: {
+      0: { cellWidth: 25 },
+      1: { cellWidth: 45 },
+      2: { cellWidth: 25 },
+      3: { cellWidth: 'auto' },
+      4: { cellWidth: 30, halign: 'right', fontStyle: 'bold' }
+    },
+    margin: { left: 14, right: 14 }
   });
   
   doc.save(`relatorio_processos_${format(new Date(), 'yyyyMMdd')}.pdf`);
@@ -266,39 +282,33 @@ export const generateReportPDF = async (elementId: string, filename: string, isE
   try {
     const canvas = await html2canvas(element, {
       scale: 2,
-      backgroundColor: '#f1f5f9',
+      backgroundColor: '#ffffff',
       useCORS: true,
       logging: false,
-      windowWidth: element.scrollWidth,
-      windowHeight: element.scrollHeight,
-      onclone: (clonedDoc) => {
-        const style = clonedDoc.createElement('style');
-        style.innerHTML = `
-          * {
-            color-scheme: light !important;
-            color: #0f172a !important;
-          }
-          .bg-primary { background-color: #0284c7 !important; }
-          .bg-surface { background-color: #ffffff !important; }
-          .bg-surface-hover { background-color: #f8fafc !important; }
-          .border-border { border-color: #e2e8f0 !important; }
-          .text-text-secondary { color: #64748b !important; }
-          /* Force standard colors for common Tailwind v4 oklch/oklab colors */
-          [class*="bg-emerald-500"] { background-color: #10b981 !important; }
-          [class*="bg-rose-500"] { background-color: #f43f5e !important; }
-          [class*="bg-blue-500"] { background-color: #0ea5e9 !important; }
-          [class*="bg-amber-500"] { background-color: #f59e0b !important; }
-        `;
-        clonedDoc.head.appendChild(style);
-      }
+      windowWidth: 1200, // Fixed width for consistent layout
     });
     
     const imgData = canvas.toDataURL('image/png');
     const pdf = new jsPDF('p', 'mm', 'a4');
-    const imgWidth = 210;
-    const imgHeight = (canvas.height * imgWidth) / canvas.width;
     
-    pdf.addImage(imgData, 'PNG', 0, 0, imgWidth, imgHeight);
+    const imgWidth = 210;
+    const pageHeight = 297;
+    const imgHeight = (canvas.height * imgWidth) / canvas.width;
+    let heightLeft = imgHeight;
+    let position = 0;
+
+    // First page
+    pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight);
+    heightLeft -= pageHeight;
+
+    // Subsequent pages if content is long
+    while (heightLeft >= 0) {
+      position = heightLeft - imgHeight;
+      pdf.addPage();
+      pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight);
+      heightLeft -= pageHeight;
+    }
+
     pdf.save(filename);
   } catch (error) {
     console.error("Erro ao gerar PDF do relatório:", error);
@@ -329,4 +339,32 @@ export const generateUsersPDF = (records: any[], systemSettings: any) => {
   });
   
   doc.save(`relatorio_usuarios_${format(new Date(), 'yyyyMMdd')}.pdf`);
+};
+
+export const generateAuditLogsPDF = (records: any[], systemSettings: any) => {
+  const doc = new jsPDF();
+  const startY = addHeader(doc, 'Timeline de Atividades', systemSettings);
+  
+  const body = records.map(r => [
+    r.time || '-',
+    r.user || '-',
+    r.title || '-',
+    r.type || '-'
+  ]);
+  
+  autoTable(doc, {
+    startY,
+    head: [['Data/Hora', 'Usuário', 'Ação', 'Módulo']],
+    body,
+    theme: 'striped',
+    headStyles: { fillColor: [2, 132, 199] },
+    columnStyles: {
+      0: { cellWidth: 35 },
+      1: { cellWidth: 40 },
+      2: { cellWidth: 'auto' },
+      3: { cellWidth: 30 }
+    }
+  });
+  
+  doc.save(`logs_atividades_${format(new Date(), 'yyyyMMdd')}.pdf`);
 };

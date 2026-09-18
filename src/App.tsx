@@ -40,7 +40,15 @@ import { format, parseISO, differenceInDays } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import html2canvas from 'html2canvas';
 import jsPDF from 'jspdf';
-import { safeHtml2Canvas } from './utils/pdf';
+import { 
+  safeHtml2Canvas, 
+  generateChecklistPDF,
+  generateChecklistsReportPDF, 
+  generateFuelPDF, 
+  generateDailyPDF, 
+  generateContractsPDF,
+  generateReportPDF
+} from './utils/pdf';
 
 // Page Components
 import Dashboard from './pages/Dashboard';
@@ -116,7 +124,6 @@ import { handleExportCSV } from './utils/csv';
 import { runSmartHealthCheck, HealthCheckResult } from './services/automation';
 import { handleImportFile, handleImportFuel } from './utils/import';
 import { callAIProxy } from './lib/ai';
-import { generateChecklistPDF, generateChecklistsReportPDF, generateFuelPDF, generateDailyPDF, generateContractsPDF } from './utils/pdf';
 import { processCurrencyInput, parseCurrencyToNumber, formatCurrency } from './utils/format';
 import { logActivity, fetchLogs, ActivityLog } from './services/logs';
 
@@ -361,7 +368,7 @@ export default function App() {
       });
     });
 
-    return items.sort((a, b) => b.time.localeCompare(a.time)).slice(0, 4);
+    return items.sort((a, b) => b.time.localeCompare(a.time));
   }, [fuelRecords, dailyRecords, contracts]);
 
   const [showCriticalModal, setShowCriticalModal] = useState(false);
@@ -414,6 +421,7 @@ export default function App() {
     object: '',
     value: '',
     invoiceValue: '',
+    invoiceNumber: '',
     submissionDate: new Date().toISOString().split('T')[0],
     status: 'em_analise',
     items: [],
@@ -659,7 +667,10 @@ export default function App() {
         item.vendor.toLowerCase().includes(checklistSearch.toLowerCase()) ||
         item.object.toLowerCase().includes(checklistSearch.toLowerCase());
       
-      const matchesStatus = !checklistFilters.status || item.status === checklistFilters.status;
+      const matchesStatus = !checklistFilters.status || 
+        (checklistFilters.status === 'andamento' 
+          ? (item.status !== 'concluido' && item.status !== 'pendente') 
+          : item.status === checklistFilters.status);
       const matchesVendor = !checklistFilters.vendor || item.vendor.toLowerCase().includes(checklistFilters.vendor.toLowerCase());
       
       let matchesDate = true;
@@ -753,63 +764,39 @@ export default function App() {
 
   const handleExportPDF = async (reportName: string) => {
     setIsExportingPDF(true);
-    const element = document.getElementById('report-content');
-    if (!element) {
-      setIsExportingPDF(false);
-      return;
-    }
-
+    
     try {
-      const canvas = await safeHtml2Canvas(element, {
-        scale: 2,
-        backgroundColor: '#0a0a0a',
-        useCORS: true,
-        logging: false,
-        windowWidth: element.scrollWidth,
-        windowHeight: element.scrollHeight,
-        onclone: (clonedDoc) => {
-          const style = clonedDoc.createElement('style');
-          style.innerHTML = `
-            * {
-              color-scheme: dark !important;
-              color: #ffffff !important;
-            }
-            .bg-primary { background-color: #4f46e5 !important; }
-            .bg-surface { background-color: #141414 !important; }
-            .bg-surface-hover { background-color: #1c1c1c !important; }
-            .border-border { border-color: #27272a !important; }
-            .text-text-secondary { color: #a1a1aa !important; }
-            /* Force standard colors for common Tailwind v4 oklch/oklab colors */
-            [class*="bg-emerald-500"] { background-color: #10b981 !important; }
-            [class*="bg-rose-500"] { background-color: #f43f5e !important; }
-            [class*="bg-blue-500"] { background-color: #3b82f6 !important; }
-            [class*="bg-amber-500"] { background-color: #f59e0b !important; }
-          `;
-          clonedDoc.head.appendChild(style);
-        }
-      });
-
-      const imgData = canvas.toDataURL('image/png');
-      const pdf = new jsPDF('p', 'mm', 'a4');
-      const imgWidth = 210;
-      const pageHeight = 297;
-      const imgHeight = (canvas.height * imgWidth) / canvas.width;
-      let heightLeft = imgHeight;
-      let position = 0;
-
-      pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight);
-      heightLeft -= pageHeight;
-
-      while (heightLeft >= 0) {
-        position = heightLeft - imgHeight;
-        pdf.addPage();
-        pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight);
-        heightLeft -= pageHeight;
+      // Usar geradores estruturados para tópicos específicos
+      if (reportName === 'checklists') {
+        generateChecklistsReportPDF(checklistRecords, 'Relatório de Checklists', systemSettings);
+        setIsExportingPDF(false);
+        return;
+      }
+      
+      if (reportName === 'combustivel') {
+        generateFuelPDF(fuelRecords, systemSettings);
+        setIsExportingPDF(false);
+        return;
+      }
+      
+      if (reportName === 'diarias') {
+        generateDailyPDF(dailyRecords, servidores, systemSettings);
+        setIsExportingPDF(false);
+        return;
+      }
+      
+      if (reportName === 'contratos') {
+        generateContractsPDF(contracts, systemSettings);
+        setIsExportingPDF(false);
+        return;
       }
 
-      pdf.save(`relatorio_${reportName}_${new Date().toISOString().split('T')[0]}.pdf`);
+      // Para relatório geral ou outros tipos, usar o gerador de screenshot melhorado
+      const filename = `relatorio_${reportName}_${new Date().toISOString().split('T')[0]}.pdf`;
+      await generateReportPDF('report-content', filename, setIsExportingPDF);
     } catch (error) {
       console.error('Erro ao gerar PDF:', error);
+      addNotification("Erro", "Falha ao gerar PDF. Tente novamente.", "error");
     } finally {
       setIsExportingPDF(false);
     }
@@ -1660,6 +1647,7 @@ export default function App() {
             chartData={chartData}
             auditItems={auditItems}
             addNotification={addNotification}
+            systemSettings={systemSettings}
           />
         );
       case 'combustivel':
@@ -1778,6 +1766,7 @@ export default function App() {
             setDeleteType={setDeleteType}
             setShowDeleteConfirm={setShowDeleteConfirm}
             confirmations={confirmations}
+            currentUser={currentUser!}
           />
         );
       case 'contratos':
@@ -2320,7 +2309,9 @@ export default function App() {
             </motion.div>
           </div>
         )}
+      </AnimatePresence>
 
+      <AnimatePresence>
         {showDailyChecklistReport && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 print:p-0 print:static print:bg-white">
             <motion.div
@@ -2403,7 +2394,9 @@ export default function App() {
             </motion.div>
           </div>
         )}
+      </AnimatePresence>
 
+      <AnimatePresence>
         {showSelectedChecklistReport && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 print:p-0 print:static print:bg-white">
             <motion.div
@@ -2489,7 +2482,9 @@ export default function App() {
             </motion.div>
           </div>
         )}
+      </AnimatePresence>
 
+      <AnimatePresence>
         {showChecklistSelectionModal && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-0 sm:p-4">
             <motion.div
@@ -2626,9 +2621,9 @@ export default function App() {
             </motion.div>
           </div>
         )}
-
-        {renderModals()}
       </AnimatePresence>
+
+      {renderModals()}
     </div>
   );
 }

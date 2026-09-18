@@ -22,6 +22,10 @@ export const callAIProxy = async (contents: any[], config: any = {}, model: stri
     if (!response.ok) {
       if (isJson) {
         const data = await response.json();
+        // Quota error handling
+        if (response.status === 429 || (data.error && data.error.includes("quota"))) {
+          throw new Error("O limite diário de uso da IA foi atingido para este projeto. A funcionalidade será restabelecida automaticamente em algumas horas.");
+        }
         throw new Error(data.error || `Erro de IA (${response.status})`);
       } else {
         const text = await response.text();
