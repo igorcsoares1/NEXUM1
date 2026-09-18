@@ -71,11 +71,11 @@ export const AIAssistant: React.FC<AIAssistantProps> = ({
 
       setMessages(prev => [...prev, { role: 'ai', content: aiContent || "Desculpe, não consegui gerar uma resposta." }]);
     } catch (error: any) {
-      console.error("Erro no Assistente IA:", error);
-      let errorMessage = "Desculpe, tive um problema ao processar sua solicitação.";
+      console.warn("Erro no Assistente IA:", error.message);
+      let errorMessage = error.message || "Desculpe, tive um problema ao processar sua solicitação.";
       
-      if (error.message?.includes('429') || error.message?.includes('RESOURCE_EXHAUSTED')) {
-        errorMessage = "O limite de uso da IA foi atingido temporariamente. Por favor, tente novamente em alguns instantes.";
+      if (error.message?.includes('429') || error.message?.includes('RESOURCE_EXHAUSTED') || error.message?.includes('limite diário')) {
+        errorMessage = "O limite de uso da IA foi atingido para este projeto. A funcionalidade será restabelecida automaticamente em algumas horas.";
       }
       
       setMessages(prev => [...prev, { role: 'ai', content: errorMessage }]);

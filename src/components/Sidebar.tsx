@@ -149,6 +149,14 @@ export const Sidebar = ({
               onClick={() => { setActiveView('contratos'); setIsSidebarOpen(false); }} 
             />
           )}
+          {hasPermission('notas_fiscais') && (
+            <SidebarItem 
+              icon={FileText} 
+              label="Notas Fiscais" 
+              active={activeView === 'notas_fiscais'} 
+              onClick={() => { setActiveView('notas_fiscais'); setIsSidebarOpen(false); }} 
+            />
+          )}
           {hasPermission('usuarios') && (
             <SidebarItem 
               icon={UserCircle} 

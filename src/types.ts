@@ -1,6 +1,6 @@
 import React from 'react';
 
-export type View = 'dashboard' | 'combustivel' | 'diarias' | 'checklists' | 'contratos' | 'usuarios' | 'relatorios' | 'prefeituras' | 'configuracoes' | 'protocolo-entrada' | 'protocolo-saida' | 'protocolo-processos' | 'protocolo-tramitacao' | 'protocolo-pendencias' | 'protocolo-arquivos' | 'manual' | 'relatorio_executivo';
+export type View = 'dashboard' | 'combustivel' | 'diarias' | 'checklists' | 'contratos' | 'notas_fiscais' | 'usuarios' | 'relatorios' | 'prefeituras' | 'configuracoes' | 'protocolo-entrada' | 'protocolo-saida' | 'protocolo-processos' | 'protocolo-tramitacao' | 'protocolo-pendencias' | 'protocolo-arquivos' | 'manual' | 'relatorio_executivo';
 
 export interface Protocol {
   id: string;
@@ -173,6 +173,22 @@ export interface DiariaConfirmation {
   nome_aprovador: string;
   data_aprovacao: string;
   observacao?: string;
+}
+
+export interface NotaFiscal {
+  id: string;
+  numero_nota: string;
+  fornecedor: string;
+  valor: string;
+  data_emissao: string;
+  contrato_id: string;
+  observacao?: string;
+  status: 'pendente' | 'recebido';
+  enviado_por: string;
+  enviado_em: string;
+  recebido_por?: string;
+  recebido_em?: string;
+  prefeituraId: string;
 }
 
 export interface User {

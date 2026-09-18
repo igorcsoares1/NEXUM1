@@ -66,6 +66,7 @@ import Login from './pages/Login';
 import ChecklistPublico from './pages/ChecklistPublico';
 import DiariaPublica from './pages/DiariaPublica';
 import RelatorioExecutivo from './components/views/RelatorioExecutivo';
+import NotasFiscais from './components/views/NotasFiscais';
 import { Modals } from './components/Modals';
 
 import {
@@ -190,7 +191,7 @@ export default function App() {
   // Sync activeView with URL
   useEffect(() => {
     const path = location.pathname.split('/')[1] || 'dashboard';
-    const validViews = ['dashboard', 'combustivel', 'diarias', 'checklists', 'contratos', 'usuarios', 'relatorios', 'prefeituras', 'configuracoes', 'protocolo-entrada', 'protocolo-saida', 'protocolo-processos', 'protocolo-tramitacao', 'protocolo-pendencias', 'protocolo-arquivos', 'manual', 'relatorio_executivo'];
+    const validViews = ['dashboard', 'combustivel', 'diarias', 'checklists', 'contratos', 'notas_fiscais', 'usuarios', 'relatorios', 'prefeituras', 'configuracoes', 'protocolo-entrada', 'protocolo-saida', 'protocolo-processos', 'protocolo-tramitacao', 'protocolo-pendencias', 'protocolo-arquivos', 'manual', 'relatorio_executivo'];
     if (validViews.includes(path)) {
       setActiveView(path as View);
     }
@@ -1122,29 +1123,40 @@ export default function App() {
         fetchDailyRecords();
         logActivity(currentUser, 'Exclusão de Diária', `Excluiu diária ID: ${itemToDelete}`);
       } else if (deleteType === 'checklist' && itemToDelete) {
-        // Find record first to revert contract consumption
+        // Find record first to revert contract consumption and also delete digital receipts
         const { data: checklist } = await supabase
           .from('checklists')
           .select('*')
           .eq('id', itemToDelete)
           .maybeSingle();
 
-        if (checklist && checklist.contractNumber && checklist.invoiceValue) {
-          const { data: contract } = await supabase
-            .from('contracts')
-            .select('*')
-            .eq('number', checklist.contractNumber)
-            .maybeSingle();
-
-          if (contract) {
-            const invoiceVal = parseCurrencyToNumber(checklist.invoiceValue);
-            const currentConsumption = parseCurrencyToNumber(contract.consumption);
-            const newConsumption = Math.max(0, currentConsumption - invoiceVal);
-            
-            await supabase
+        if (checklist) {
+          // 1. Revert contract consumption
+          if (checklist.contractNumber && checklist.invoiceValue) {
+            const { data: contract } = await supabase
               .from('contracts')
-              .update({ consumption: formatCurrency(newConsumption) })
-              .eq('id', contract.id);
+              .select('*')
+              .eq('number', checklist.contractNumber)
+              .maybeSingle();
+
+            if (contract) {
+              const invoiceVal = parseCurrencyToNumber(checklist.invoiceValue);
+              const currentConsumption = parseCurrencyToNumber(contract.consumption);
+              const newConsumption = Math.max(0, currentConsumption - invoiceVal);
+              
+              await supabase
+                .from('contracts')
+                .update({ consumption: formatCurrency(newConsumption) })
+                .eq('id', contract.id);
+            }
+          }
+
+          // 2. Delete associated digital receipts (linked by process number)
+          if (checklist.processNumber) {
+            await supabase
+              .from('recibos_digitais')
+              .delete()
+              .eq('processo_numero', checklist.processNumber);
           }
         }
 
@@ -1813,6 +1825,8 @@ export default function App() {
             addNotification={addNotification}
           />
         );
+      case 'notas_fiscais':
+        return <NotasFiscais currentUser={currentUser} />;
       case 'usuarios':
         return (
           <Usuarios
@@ -1990,7 +2004,7 @@ export default function App() {
 
               <AnimatePresence>
                 {showNotifications && (
-                  <>
+                  <div key="notifications-container">
                     <div
                       className="fixed inset-0 z-40"
                       onClick={() => setShowNotifications(false)}
@@ -2094,7 +2108,7 @@ export default function App() {
                         </div>
                       )}
                     </motion.div>
-                  </>
+                  </div>
                 )}
               </AnimatePresence>
               <div className="hidden xs:block w-px h-6 bg-border mx-1 md:mx-2"></div>

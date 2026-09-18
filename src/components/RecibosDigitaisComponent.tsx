@@ -44,9 +44,10 @@ export function RecibosDigitaisComponent({ currentUser, compact = false }: { cur
   useEffect(() => {
     fetchRecibos();
 
-    // Inscrição em tempo real para novos recibos
+    // Inscrição em tempo real para novos recibos com nome de canal único para evitar conflitos entre instâncias
+    const channelId = `realtime_recibos_${Math.random().toString(36).substring(7)}`;
     const channel = supabase
-      .channel('realtime:recibos_digitais')
+      .channel(channelId)
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'recibos_digitais' }, (payload) => {
         setRecibos(prev => [payload.new as Recibo, ...prev]);
       })
@@ -79,19 +80,23 @@ export function RecibosDigitaisComponent({ currentUser, compact = false }: { cur
 
   const handleDeleteRecibo = async (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
-    if (!window.confirm('Tem certeza que deseja apagar este recibo?')) return;
-
+    
     try {
+      const confirmed = window.confirm('Tem certeza que deseja apagar este recibo?');
+      if (!confirmed) return;
+
       const { error } = await supabase
         .from('recibos_digitais')
         .delete()
         .eq('id', id);
 
       if (error) throw error;
-      // Inscrição em tempo real cuidará da atualização da UI
-    } catch (err) {
+      
+      // Feedback visual imediato
+      setRecibos(prev => prev.filter(r => r.id !== id));
+    } catch (err: any) {
       console.error('Erro ao apagar recibo:', err);
-      alert('Falha ao apagar recibo. Verifique suas permissões.');
+      alert(`Falha ao apagar recibo: ${err.message || 'Verifique suas permissões.'}`);
     }
   };
 
@@ -120,7 +125,7 @@ export function RecibosDigitaisComponent({ currentUser, compact = false }: { cur
     );
   }
 
-    const isAuthorizedToDelete = currentUser?.role === 'superadmin' || currentUser?.role === 'admin';
+    const isAuthorizedToDelete = currentUser?.role === 'superadmin' || currentUser?.role === 'admin' || currentUser?.role === 'gestor';
 
     return (
       <div className="flex flex-col h-full overflow-hidden">
@@ -156,7 +161,7 @@ export function RecibosDigitaisComponent({ currentUser, compact = false }: { cur
         <div className="flex-1 overflow-y-auto space-y-2 no-scrollbar">
           <AnimatePresence mode="popLayout">
             {paginatedRecibos.length > 0 ? (
-              <>
+              <div key="recibos-list-container">
                 <div className={cn(
                   "grid grid-cols-1 gap-3 pb-4",
                   !compact && "md:grid-cols-2"
@@ -164,65 +169,62 @@ export function RecibosDigitaisComponent({ currentUser, compact = false }: { cur
                   {paginatedRecibos.map((recibo, index) => (
                     <motion.div
                       layout
-                      initial={{ opacity: 0, scale: 0.98 }}
-                      animate={{ opacity: 1, scale: 1 }}
-                      exit={{ opacity: 0, scale: 0.95 }}
-                      key={`${recibo.id}-${index}`}
+                      initial={{ opacity: 0, scale: 0.95, y: 10 }}
+                      animate={{ opacity: 1, scale: 1, y: 0 }}
+                      exit={{ opacity: 0, scale: 0.9, y: -10 }}
+                      transition={{ duration: 0.2, delay: index * 0.03 }}
+                      key={recibo.id}
                       className="group relative"
                     >
-                      <div className="relative">
+                      <div className="relative bg-surface border border-border/40 rounded-3xl overflow-hidden hover:shadow-xl hover:border-primary/30 transition-all duration-300">
                         <button
                           onClick={() => setSelectedRecibo(recibo)}
-                          className="w-full text-left p-4 pr-12 rounded-2xl border border-border/40 bg-surface/60 hover:bg-surface-hover hover:border-primary/30 transition-all shadow-sm hover:shadow-md group"
+                          className="w-full text-left p-5 pr-14 transition-all"
                         >
                           <div className="flex items-start gap-4">
-                            <div className="w-12 h-12 rounded-2xl bg-emerald-500/10 text-emerald-500 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform border border-emerald-500/20">
-                              <FileCheck size={22} />
+                            <div className="w-14 h-14 rounded-2xl bg-primary/5 text-primary flex items-center justify-center shrink-0 group-hover:bg-primary group-hover:text-white transition-all duration-500 border border-primary/10 group-hover:rotate-6">
+                              <FileCheck size={24} />
                             </div>
                             <div className="flex-1 min-w-0">
-                              <div className="flex items-center justify-between mb-1 gap-2">
-                                <span className="text-[10px] font-black bg-primary/10 text-primary px-2 py-0.5 rounded-lg uppercase tracking-wider">
+                              <div className="flex items-center justify-between mb-2 gap-2">
+                                <span className="text-[10px] font-black bg-primary/10 text-primary px-3 py-1 rounded-lg uppercase tracking-wider">
                                   {recibo.processo_numero}
                                 </span>
-                                <span className="text-[8px] font-black bg-emerald-500/10 text-emerald-500 px-2 py-0.5 rounded-full uppercase">
+                                <span className={cn(
+                                  "text-[9px] font-black px-2.5 py-1 rounded-full uppercase tracking-tighter",
+                                  recibo.status === 'pendente' ? "bg-amber-500/10 text-amber-500" : "bg-emerald-500/10 text-emerald-500"
+                                )}>
                                   {recibo.status || 'concluído'}
                                 </span>
                               </div>
                               
-                              <p className="text-sm font-black text-text-primary truncate leading-tight mb-1">
+                              <p className="text-base font-black text-text-primary truncate leading-tight mb-1 group-hover:text-primary transition-colors">
                                 {recibo.fornecedor || (recibo.fornecedores_lista && recibo.fornecedores_lista[0]) || 'Fornecedor n/a'}
                               </p>
                               
-                              <div className="flex flex-wrap items-center gap-3 text-[10px] text-text-secondary font-bold">
-                                <div className="flex items-center gap-1">
-                                  <User size={10} className="opacity-50" />
-                                  <span className="truncate max-w-[100px]">{recibo.nome_receptor}</span>
+                              <div className="flex flex-wrap items-center gap-4 mt-2">
+                                <div className="flex items-center gap-2 text-[10px] text-text-secondary font-bold">
+                                  <User size={12} className="text-primary/60" />
+                                  <span className="truncate max-w-[120px] text-ellipsis overflow-hidden">{recibo.nome_receptor}</span>
                                 </div>
-                                <div className="flex items-center gap-1">
-                                  <Clock size={10} className="opacity-50" />
-                                  {recibo.data_hora_recebimento.split(' às ')[0]}
-                                </div>
+                                {recibo.nota_fiscal && (
+                                  <div className="flex items-center gap-2 text-[10px] text-text-secondary font-black opacity-60">
+                                    <span className="bg-surface-hover px-1.5 py-0.5 rounded border border-border/40">NF: {recibo.nota_fiscal}</span>
+                                  </div>
+                                )}
                               </div>
-  
-                              {recibo.nota_fiscal && (
-                                <div className="mt-2 pt-2 border-t border-border/20">
-                                  <p className="text-[9px] font-black text-rose-500 uppercase">
-                                    Nota: {recibo.nota_fiscal}
-                                  </p>
-                                </div>
-                              )}
                             </div>
-                            <ChevronRight size={16} className="text-text-secondary/30 group-hover:text-primary transition-colors mt-1" />
+                            <ChevronRight size={20} className="text-text-secondary/20 group-hover:text-primary transition-all group-hover:translate-x-1" />
                           </div>
                         </button>
   
                         {isAuthorizedToDelete && (
                           <button
                             onClick={(e) => handleDeleteRecibo(recibo.id, e)}
-                            className="absolute top-3 right-3 p-2 bg-rose-500/10 text-rose-500 rounded-xl hover:bg-rose-500 hover:text-white transition-all shadow-sm z-10"
+                            className="absolute top-4 right-4 p-2.5 bg-rose-500/5 text-rose-500 rounded-2xl hover:bg-rose-500 hover:text-white transition-all shadow-sm z-10 border border-rose-500/10 hover:shadow-lg hover:shadow-rose-500/20"
                             title="Apagar Recibo"
                           >
-                            <Trash2 size={16} />
+                            <Trash2 size={18} />
                           </button>
                         )}
                       </div>
@@ -265,7 +267,7 @@ export function RecibosDigitaisComponent({ currentUser, compact = false }: { cur
                   </button>
                 </div>
               )}
-            </>
+            </div>
           ) : (
             <div className="py-20 text-center flex flex-col items-center">
               <div className="w-16 h-16 rounded-3xl bg-surface-hover flex items-center justify-center mb-4 border border-border/50">

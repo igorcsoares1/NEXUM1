@@ -145,9 +145,9 @@ export default function RelatorioExecutivo() {
         const analysis = await analyzeDataForReport(data, false);
         setReportData(analysis);
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error("Erro ao processar arquivo:", err);
-      setError("Não foi possível processar o arquivo. Verifique se o formato é suportado e se o conteúdo é válido.");
+      setError(err.message || "Não foi possível processar o arquivo. Verifique se o formato é suportado e se o conteúdo é válido.");
     } finally {
       setIsAnalyzing(false);
     }

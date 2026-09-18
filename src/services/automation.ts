@@ -50,7 +50,7 @@ export const runSmartHealthCheck = async (
 
     const text = await callAIProxy([{ role: 'user', parts: [{ text: prompt }] }], {
       responseMimeType: "application/json"
-    }, "gemini-3.8-flash");
+    }, "gemini-1.5-flash"); // Switching to a more standard model name just in case
     
     try {
       return JSON.parse(text || "{}");
@@ -59,13 +59,67 @@ export const runSmartHealthCheck = async (
       if (codeBlockMatch) return JSON.parse(codeBlockMatch[1]);
       throw e;
     }
-  } catch (error) {
+  } catch (error: any) {
     console.error("Erro no Health Check:", error);
+    
+    // Fallback logic without AI
+    const now = new Date();
+    const expiringSoon = contracts.filter(c => {
+      if (!c.expiryDate) return false;
+      const expiry = new Date(c.expiryDate);
+      const diff = expiry.getTime() - now.getTime();
+      return diff > 0 && diff < (30 * 24 * 60 * 60 * 1000); // 30 days
+    });
+
+    const highConsumption = contracts.filter(c => {
+      const consumption = parseFloat(c.consumption.replace(/[^0-9,-]/g, '').replace(',', '.'));
+      return consumption > 90; // Over 90%
+    });
+
+    const baseScore = 75;
+    const score = Math.max(10, baseScore - (expiringSoon.length * 10) - (highConsumption.length * 15));
+    
+    let status: HealthCheckResult['status'] = 'excelente';
+    if (score < 40) status = 'critico';
+    else if (score < 65) status = 'atencao';
+    else if (score < 85) status = 'bom';
+
+    const recommendations: HealthCheckResult['recommendations'] = [];
+    if (expiringSoon.length > 0) {
+      recommendations.push({
+        title: "Contratos Expirando",
+        description: `Existem ${expiringSoon.length} contratos que vencem nos próximos 30 dias.`,
+        priority: "alta",
+        action: "Ver Contratos"
+      });
+    }
+
+    if (highConsumption.length > 0) {
+      recommendations.push({
+        title: "Consumo Elevado",
+        description: `${highConsumption.length} contratos atingiram mais de 90% do valor empenhado.`,
+        priority: "alta",
+        action: "Alertar Gestores"
+      });
+    }
+
+    const insights = [
+      "Relatório gerado via análise local (IA em repouso).",
+      `Total de contratos ativos: ${contracts.filter(c => c.status === 'vigente').length}`,
+      `Registros de combustível analisados: ${fuelRecords.length}`
+    ];
+
+    if (error.message?.includes("limite diário")) {
+      insights.unshift("⚠️ Quota de IA atingida. Resultados baseados em heurísticas locais.");
+    }
+
     return {
-      score: 0,
-      status: 'critico',
-      recommendations: [{ title: "Erro na Análise", description: "Não foi possível processar os dados da prefeitura.", priority: "alta" }],
-      insights: ["Verifique sua conexão com a API Gemini."]
+      score,
+      status,
+      recommendations: recommendations.length > 0 ? recommendations : [
+        { title: "Manter Monitoramento", description: "Continue registrando as diárias e consumos regularmente.", priority: "baixa" }
+      ],
+      insights
     };
   }
 };

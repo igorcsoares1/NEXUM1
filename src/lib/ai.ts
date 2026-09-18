@@ -2,7 +2,7 @@
  * Client-side utility for calling the server-side AI proxy.
  * This avoids direct SDK usage in the browser, preventing CORS and CSP errors.
  */
-export const callAIProxy = async (contents: any[], config: any = {}, model: string = "gemini-3.8-flash", retries = 2): Promise<string> => {
+export const callAIProxy = async (contents: any[], config: any = {}, model: string = "gemini-1.5-flash", retries = 2): Promise<string> => {
   try {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 600000); // 10 minute timeout for server retries
@@ -22,11 +22,19 @@ export const callAIProxy = async (contents: any[], config: any = {}, model: stri
     if (!response.ok) {
       if (isJson) {
         const data = await response.json();
-        // Quota error handling
-        if (response.status === 429 || (data.error && data.error.includes("quota"))) {
+        const errorMessage = data.error || "";
+        
+        // Comprehensive Quota error handling (429 or specific strings)
+        const isQuotaError = 
+          response.status === 429 || 
+          errorMessage.toLowerCase().includes("quota") || 
+          errorMessage.toLowerCase().includes("limit") || 
+          errorMessage.toLowerCase().includes("resource_exhausted");
+
+        if (isQuotaError) {
           throw new Error("O limite diário de uso da IA foi atingido para este projeto. A funcionalidade será restabelecida automaticamente em algumas horas.");
         }
-        throw new Error(data.error || `Erro de IA (${response.status})`);
+        throw new Error(errorMessage || `Erro de IA (${response.status})`);
       } else {
         const text = await response.text();
         if (text.includes("<!doctype") || text.includes("<html") || text.includes("Service Unavailable")) {
@@ -47,11 +55,21 @@ export const callAIProxy = async (contents: any[], config: any = {}, model: stri
     const data = await response.json();
     return data.text || "";
   } catch (error: any) {
-    console.error("AI Proxy Error Context:", {
-      message: error.message,
-      name: error.name,
-      stack: error.stack
-    });
+    // Only log true unexpected errors, not user-friendly quota/timeout messages
+    const isFriendlyError = 
+      error.message?.includes("limite diário") || 
+      error.message?.includes("temporariamente ocupado") ||
+      error.name === 'AbortError';
+
+    if (!isFriendlyError) {
+      console.error("AI Proxy Error Context:", {
+        message: error.message,
+        name: error.name,
+        stack: error.stack
+      });
+    } else {
+      console.warn("AI Proxy Managed Error:", error.message);
+    }
 
     if (error.name === 'AbortError') {
       throw new Error("O processamento excedeu o tempo limite. Tente enviar arquivos menores ou aguarde alguns minutos.");

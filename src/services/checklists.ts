@@ -379,9 +379,23 @@ export const handleBulkDeleteChecklists = async (
       }
     }
 
-    await Promise.all(selectedChecklistIds.map(id => 
-      supabase.from('checklists').delete().eq('id', id)
-    ));
+    await Promise.all(selectedChecklistIds.map(async id => {
+      // Find checklist to get its process number
+      const { data: checklist } = await supabase
+        .from('checklists')
+        .select('processNumber')
+        .eq('id', id)
+        .maybeSingle();
+
+      if (checklist && checklist.processNumber) {
+        await supabase
+          .from('recibos_digitais')
+          .delete()
+          .eq('processo_numero', checklist.processNumber);
+      }
+
+      return supabase.from('checklists').delete().eq('id', id);
+    }));
 
     setSelectedChecklistIds([]);
     setShowChecklistSelectionModal(false);

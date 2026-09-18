@@ -648,8 +648,8 @@ const Checklists = ({
                 </button>
               </div>
 
-              <div className="grid grid-cols-1 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-                <div className="lg:col-span-2 xl:col-span-3">
+              <div className="flex flex-col gap-6">
+                <div className="w-full">
                   {/* Desktop Table */}
                   <div className="overflow-x-auto border border-border/60 rounded-2xl bg-surface/30 shadow-inner no-scrollbar">
                     <div className="inline-block min-w-full align-middle">
@@ -775,23 +775,6 @@ const Checklists = ({
                     showingItems={paginatedChecklists.length}
                     label="registros"
                   />
-                </div>
-
-                {/* Sidebar for Confirmations */}
-                <div className="lg:col-span-1 border-l border-border/50 pl-6 flex flex-col">
-                  <div className="flex items-center justify-between mb-6">
-                    <h4 className="text-[10px] font-black uppercase tracking-widest text-text-secondary">Recibos Recentes</h4>
-                    <button 
-                      onClick={() => setActiveTab('recibos')}
-                      className="text-[9px] font-black px-1.5 py-0.5 bg-primary/10 text-primary rounded-md hover:bg-primary hover:text-white transition-all"
-                    >
-                      Ver Todos
-                    </button>
-                  </div>
-                  
-                  <div className="flex-1 min-h-0">
-                    <RecibosDigitaisComponent currentUser={currentUser} compact={true} />
-                  </div>
                 </div>
               </div>
             </>
