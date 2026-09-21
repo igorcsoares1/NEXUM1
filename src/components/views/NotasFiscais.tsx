@@ -74,14 +74,14 @@ export default function NotasFiscais({ currentUser, addNotification }: NotasFisc
     setLoading(true);
     try {
       const { data, error } = await supabase
-        .from('notas_fiscais')
+        .from('invoices')
         .select('*')
         .eq('prefeituraId', currentUser.prefeituraId)
         .order('enviado_em', { ascending: false })
         .limit(1000);
       
       if (error) {
-        console.error('Erro ao buscar notas:', error);
+        console.error('Erro ao buscar invoices:', error);
         throw error;
       }
       setNotas(data || []);
@@ -142,7 +142,7 @@ export default function NotasFiscais({ currentUser, addNotification }: NotasFisc
       }
 
       const { data, error } = await supabase
-        .from('notas_fiscais')
+        .from('invoices')
         .insert([payload])
         .select();
 
@@ -189,7 +189,7 @@ export default function NotasFiscais({ currentUser, addNotification }: NotasFisc
     
     try {
       const { error } = await supabase
-        .from('notas_fiscais')
+        .from('invoices')
         .update({
           status: 'recebido',
           recebido_por: currentUser.name,
