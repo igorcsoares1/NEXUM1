@@ -16,20 +16,63 @@
   body {
     @apply bg-background text-text-primary antialiased;
     font-family: 'Inter', system-ui, sans-serif;
+    /* Elimina delay de 300ms no clique mobile */
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  /* Evita zoom automático no iOS ao focar inputs */
+  input, textarea, select {
+    font-size: 16px !important;
+    touch-action: manipulation;
+  }
+
+  /* Scroll suave no iOS */
+  * {
+    -webkit-overflow-scrolling: touch;
+  }
+
+  /* Touch targets mínimos de 44px */
+  button, a, [role="button"] {
+    min-height: 44px;
+    min-width: 44px;
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: transparent;
+    cursor: pointer;
+  }
+
+  /* Tabelas com scroll horizontal no mobile */
+  table {
+    display: block;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    white-space: nowrap;
+  }
+
+  @media (min-width: 1024px) {
+    table {
+      display: table;
+      white-space: normal;
+    }
   }
 }
 
 /* Modern Button Utilities */
 .btn-primary {
   @apply relative transition-all duration-200 active:scale-95 bg-primary text-white hover:bg-primary/90 shadow-lg shadow-primary/20 hover:shadow-primary/40;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
 }
 
 .btn-surface {
   @apply relative transition-all duration-200 active:scale-95 bg-surface border border-border hover:bg-surface-hover hover:border-primary/30 shadow-sm text-text-primary;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
 }
 
 .btn-white {
   @apply relative transition-all duration-200 active:scale-95 bg-white text-rose-500 hover:bg-zinc-50 shadow-sm border border-zinc-200;
+  touch-action: manipulation;
 }
 
 .glass-card {
@@ -42,6 +85,9 @@
 
 .sidebar-item {
   @apply flex items-center gap-3 px-4 py-3 rounded-2xl text-slate-300 transition-all duration-300 cursor-pointer hover:bg-white/10 hover:text-white relative;
+  min-height: 48px;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
 }
 
 .sidebar-item-active {
@@ -53,21 +99,41 @@
   @apply absolute left-0 w-1 h-6 bg-white rounded-r-full;
 }
 
-/* Custom scrollbar */
-::-webkit-scrollbar {
-  width: 6px;
+/* Modais fullscreen no mobile */
+@media (max-width: 768px) {
+  .modal-mobile-full {
+    position: fixed !important;
+    inset: 0 !important;
+    max-width: 100% !important;
+    max-height: 100% !important;
+    border-radius: 0 !important;
+    margin: 0 !important;
+  }
+
+  /* Áreas de scroll no mobile */
+  .overflow-y-auto {
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
+  }
 }
 
-::-webkit-scrollbar-track {
-  @apply bg-transparent;
-}
+/* Custom scrollbar - desktop only */
+@media (min-width: 768px) {
+  ::-webkit-scrollbar {
+    width: 6px;
+  }
 
-::-webkit-scrollbar-thumb {
-  @apply bg-border rounded-full;
-}
+  ::-webkit-scrollbar-track {
+    @apply bg-transparent;
+  }
 
-::-webkit-scrollbar-thumb:hover {
-  @apply bg-zinc-700;
+  ::-webkit-scrollbar-thumb {
+    @apply bg-border rounded-full;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    @apply bg-zinc-700;
+  }
 }
 
 @media print {
@@ -85,7 +151,6 @@
     padding: 0 !important;
   }
 
-  /* Hide everything by default when we want to print a specific element */
   body.is-printing > *:not(.print-container) {
     display: none !important;
   }
@@ -94,7 +159,6 @@
     display: none !important;
   }
 
-  /* Reset layout for printing */
   .flex.h-screen {
     display: block !important;
     height: auto !important;
@@ -116,7 +180,6 @@
     max-height: none !important;
   }
 
-  /* Hide notifications and other overlays during print */
   .fixed.bottom-6.right-6, 
   .fixed.inset-0.z-40,
   [class*="z-[100]"],
@@ -128,7 +191,6 @@
     display: none !important;
   }
 
-  /* Ensure the printable content is visible and takes full width */
   .fixed.inset-0.z-50 {
     position: static !important;
     display: block !important;
@@ -148,10 +210,12 @@
   }
 
   table {
+    display: table !important;
     width: 100% !important;
     border-collapse: collapse !important;
     page-break-inside: auto;
     margin-bottom: 20px;
+    white-space: normal !important;
   }
 
   tr {
@@ -175,13 +239,11 @@
     color: #374151 !important;
   }
 
-  /* Ensure charts are visible if possible */
   canvas, svg {
     max-width: 100% !important;
     height: auto !important;
   }
 
-  /* Specific fix for modals when printing */
   .relative.w-full.max-w-4xl,
   .relative.w-full.max-w-2xl {
     max-width: 100% !important;
@@ -197,10 +259,8 @@
     max-height: none !important;
   }
 
-  /* Force black text for printing */
   * {
     -webkit-print-color-adjust: exact;
     print-color-adjust: exact;
   }
 }
-

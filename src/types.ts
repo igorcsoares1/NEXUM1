@@ -199,7 +199,7 @@ export interface User {
   username: string;
   password?: string;
   email?: string;
-  role: 'superadmin' | 'admin' | 'gestor' | 'visualizador';
+  role: 'superadmin' | 'admin' | 'gestor' | 'visualizador' | 'compras';
   department: string;
   status: 'ativo' | 'inativo';
   lastLogin: string;
