@@ -1682,6 +1682,7 @@ export const Modals = ({
                       { id: 'diarias', label: 'Diárias' },
                       { id: 'checklists', label: 'Checklists' },
                       { id: 'contratos', label: 'Contratos' },
+                      { id: 'notas_fiscais', label: 'Notas Fiscais' },
                       { id: 'usuarios', label: 'Usuários' },
                       { id: 'relatorios', label: 'Relatórios' },
                       { id: 'relatorio_executivo', label: 'Rel. Executivo' },
