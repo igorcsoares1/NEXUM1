@@ -12,7 +12,7 @@ CREATE TABLE IF NOT EXISTS public.notas_fiscais (
     enviado_em TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL,
     recebido_por TEXT,
     recebido_em TIMESTAMP WITH TIME ZONE,
-    prefeituraId UUID REFERENCES public.prefeituras(id) ON DELETE CASCADE,
+    prefeituraId TEXT DEFAULT '1',
     created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
 );
 

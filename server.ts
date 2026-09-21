@@ -65,7 +65,7 @@ async function startServer() {
       });
       
       const result = await withRetry(() => ai.models.generateContent({
-        model: "gemini-3.8-flash",
+        model: "gemini-1.5-flash",
         contents: [{ role: 'user', parts: [{ text: prompt }] }]
       }));
       
@@ -102,8 +102,8 @@ async function startServer() {
         httpOptions: { headers: { 'User-Agent': 'aistudio-build' } }
       });
 
-      // Use gemini-3.8-flash for recommended stability and capability in this environment
-      const targetModel = "gemini-3.8-flash";
+      // Use gemini-1.5-flash for stability and capability
+      const targetModel = "gemini-1.5-flash";
 
       const result = await withRetry(() => ai.models.generateContent({
         model: targetModel,

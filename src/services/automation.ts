@@ -72,6 +72,7 @@ export const runSmartHealthCheck = async (
     });
 
     const highConsumption = contracts.filter(c => {
+      if (!c.consumption) return false;
       const consumption = parseFloat(c.consumption.replace(/[^0-9,-]/g, '').replace(',', '.'));
       return consumption > 90; // Over 90%
     });

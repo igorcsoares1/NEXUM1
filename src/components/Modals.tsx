@@ -673,65 +673,6 @@ export const Modals = ({
                     />
                   </div>
 
-                  {/* Detalhes Financeiros do Contrato */}
-                  {(() => {
-                    const contract = contracts.find(c => c.vendor === newChecklistData.vendor || c.number === newChecklistData.contractNumber);
-                    if (!contract) return null;
-
-                    const totalNum = parseCurrencyToNumber(contract.totalValue);
-                    const consumedNum = parseCurrencyToNumber(contract.consumption);
-                    
-                    let effectiveConsumedNum = consumedNum;
-                    if (editingChecklist && editingChecklist.contractNumber === contract.number) {
-                      const existingInvoiceVal = parseCurrencyToNumber(editingChecklist.invoiceValue);
-                      effectiveConsumedNum = Math.max(0, consumedNum - existingInvoiceVal);
-                    }
-
-                    const availableBalance = totalNum - effectiveConsumedNum;
-                    const invoiceValNum = parseCurrencyToNumber(newChecklistData.invoiceValue);
-                    const finalBalance = availableBalance - invoiceValNum;
-                    const consumptionPercent = totalNum > 0 ? ((effectiveConsumedNum + invoiceValNum) / totalNum) * 100 : 0;
-
-                    return (
-                      <div className="col-span-full bg-primary/5 border border-primary/10 rounded-2xl p-4 space-y-3">
-                        <div className="flex justify-between items-center">
-                          <span className="text-[10px] font-black uppercase text-text-secondary tracking-widest">Resumo Financeiro do Contrato</span>
-                          <span className={cn(
-                            "text-[10px] font-black px-2 py-0.5 rounded-full uppercase tracking-widest",
-                            consumptionPercent > 90 ? "bg-rose-500/20 text-rose-500" : "bg-emerald-500/20 text-emerald-500"
-                          )}>
-                            Execução: {consumptionPercent.toFixed(1)}%
-                          </span>
-                        </div>
-                        
-                        <div className="grid grid-cols-3 gap-4">
-                          <div className="space-y-1">
-                            <p className="text-[9px] font-bold text-text-secondary uppercase">Saldo Disponível</p>
-                            <p className="text-sm font-black text-text-primary">{formatCurrency(availableBalance)}</p>
-                          </div>
-                          <div className="space-y-1">
-                            <p className="text-[9px] font-bold text-rose-500 uppercase">Dedução (Nota)</p>
-                            <p className="text-sm font-black text-rose-500">-{formatCurrency(invoiceValNum)}</p>
-                          </div>
-                          <div className="space-y-1">
-                            <p className="text-[9px] font-bold text-emerald-500 uppercase">Saldo Após Pagto</p>
-                            <p className="text-sm font-black text-emerald-500">{formatCurrency(finalBalance)}</p>
-                          </div>
-                        </div>
-
-                        <div className="h-1.5 w-full bg-surface-hover rounded-full overflow-hidden">
-                          <div 
-                            className={cn(
-                              "h-full transition-all duration-500",
-                              consumptionPercent > 90 ? "bg-rose-500" : "bg-primary"
-                            )} 
-                            style={{ width: `${Math.min(100, consumptionPercent)}%` }} 
-                          />
-                        </div>
-                      </div>
-                    );
-                  })()}
-
                   <div className="col-span-full space-y-2">
                     <label className="text-[10px] font-black text-text-secondary uppercase tracking-widest ml-1">Objeto do Contrato</label>
                     <textarea 

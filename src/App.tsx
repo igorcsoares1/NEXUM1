@@ -1826,7 +1826,7 @@ export default function App() {
           />
         );
       case 'notas_fiscais':
-        return <NotasFiscais currentUser={currentUser} />;
+        return <NotasFiscais currentUser={currentUser} addNotification={addNotification} />;
       case 'usuarios':
         return (
           <Usuarios

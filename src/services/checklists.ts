@@ -220,85 +220,6 @@ export const handleSaveChecklist = async (
     }
 
     if (error) throw error;
-
-    // --- LÓGICA DE ATUALIZAÇÃO DE CONSUMO DE CONTRATO ---
-    if (editingChecklist) {
-      const oldContractNumber = editingChecklist.contractNumber;
-      const newContractNumber = newChecklistData.contractNumber;
-      const oldInvoiceValue = parseCurrencyToNumber(editingChecklist.invoiceValue);
-      const newInvoiceValue = parseCurrencyToNumber(newChecklistData.invoiceValue);
-
-      if (oldContractNumber === newContractNumber) {
-        const { data: contract } = await supabase
-          .from('contracts')
-          .select('*')
-          .eq('number', newContractNumber)
-          .eq('prefeituraId', currentUser.prefeituraId)
-          .maybeSingle();
-
-        if (contract) {
-          const diff = newInvoiceValue - oldInvoiceValue;
-          if (diff !== 0) {
-            const currentConsumption = parseCurrencyToNumber(contract.consumption);
-            const newConsumption = currentConsumption + diff;
-            await supabase
-              .from('contracts')
-              .update({ consumption: formatCurrency(newConsumption) })
-              .eq('id', contract.id);
-          }
-        }
-      } else {
-        const { data: oldContract } = await supabase
-          .from('contracts')
-          .select('*')
-          .eq('number', oldContractNumber)
-          .eq('prefeituraId', currentUser.prefeituraId)
-          .maybeSingle();
-        
-        if (oldContract) {
-          const currentConsumption = parseCurrencyToNumber(oldContract.consumption);
-          const newConsumption = Math.max(0, currentConsumption - oldInvoiceValue);
-          await supabase
-            .from('contracts')
-            .update({ consumption: formatCurrency(newConsumption) })
-            .eq('id', oldContract.id);
-        }
-
-        const { data: newContract } = await supabase
-          .from('contracts')
-          .select('*')
-          .eq('number', newContractNumber)
-          .eq('prefeituraId', currentUser.prefeituraId)
-          .maybeSingle();
-        
-        if (newContract) {
-          const currentConsumption = parseCurrencyToNumber(newContract.consumption);
-          const newConsumption = currentConsumption + newInvoiceValue;
-          await supabase
-            .from('contracts')
-            .update({ consumption: formatCurrency(newConsumption) })
-            .eq('id', newContract.id);
-        }
-      }
-    } else {
-      const { data: contract } = await supabase
-        .from('contracts')
-        .select('*')
-        .eq('number', newChecklistData.contractNumber)
-        .eq('prefeituraId', currentUser.prefeituraId)
-        .maybeSingle();
-
-      if (contract) {
-        const invoiceValueNum = parseCurrencyToNumber(newChecklistData.invoiceValue);
-        const currentConsumption = parseCurrencyToNumber(contract.consumption);
-        const newConsumption = currentConsumption + invoiceValueNum;
-        await supabase
-          .from('contracts')
-          .update({ consumption: formatCurrency(newConsumption) })
-          .eq('id', contract.id);
-      }
-    }
-
     
     setShowNewChecklistModal(false);
     setEditingChecklist(null);
@@ -349,36 +270,6 @@ export const handleBulkDeleteChecklists = async (
   addNotification: (title: string, message: string, type: any) => void
 ) => {
   try {
-    // Before deleting, we need to update contract consumption
-    const { data: checklistsToDelete } = await supabase
-      .from('checklists')
-      .select('*')
-      .in('id', selectedChecklistIds);
-
-    if (checklistsToDelete && checklistsToDelete.length > 0) {
-      for (const checklist of checklistsToDelete) {
-        if (checklist.contractNumber && checklist.invoiceValue) {
-          const { data: contract } = await supabase
-            .from('contracts')
-            .select('*')
-            .eq('number', checklist.contractNumber)
-            .eq('prefeituraId', checklist.prefeituraId)
-            .maybeSingle();
-
-          if (contract) {
-            const invoiceVal = parseCurrencyToNumber(checklist.invoiceValue);
-            const currentConsumption = parseCurrencyToNumber(contract.consumption);
-            const newConsumption = Math.max(0, currentConsumption - invoiceVal);
-            
-            await supabase
-              .from('contracts')
-              .update({ consumption: formatCurrency(newConsumption) })
-              .eq('id', contract.id);
-          }
-        }
-      }
-    }
-
     await Promise.all(selectedChecklistIds.map(async id => {
       // Find checklist to get its process number
       const { data: checklist } = await supabase

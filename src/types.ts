@@ -184,8 +184,8 @@ export interface NotaFiscal {
   contrato_id: string;
   observacao?: string;
   status: 'pendente' | 'recebido';
-  enviado_por: string;
-  enviado_em: string;
+  enviado_por?: string;
+  enviado_em?: string;
   recebido_por?: string;
   recebido_em?: string;
   prefeituraId: string;

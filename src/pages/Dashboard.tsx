@@ -221,39 +221,6 @@ const Dashboard = ({
               </div>
             </div>
           </section>
-
-          {/* Recent Audits Feed Mobile */}
-          <section className="space-y-4">
-            <div className="flex justify-between items-end px-1">
-              <h3 className="text-lg font-black tracking-tight">Atividade Recente</h3>
-              <button onClick={() => setActiveView('relatorios')} className="text-[11px] font-black text-primary uppercase tracking-widest">
-                Ver todas
-              </button>
-            </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              {auditItems.slice(0, 4).map((item, idx) => (
-                <div 
-                  key={`mob-audit-feed-${item.id || idx}`} 
-                  onClick={() => setActiveView(item.type === 'fuel' ? 'combustivel' : item.type === 'checklist' ? 'checklists' : item.type === 'daily' ? 'diarias' : 'contratos')}
-                  className="flex items-center gap-4 p-4 rounded-3xl bg-surface border border-border/40 transition-all active:scale-[0.98] cursor-pointer"
-                >
-                  <div className={cn(
-                    "w-11 h-11 rounded-2xl flex items-center justify-center shrink-0 shadow-inner",
-                    item.type === 'fuel' && "bg-blue-500/10 text-blue-500",
-                    item.type === 'checklist' && "bg-emerald-500/10 text-emerald-500",
-                    item.type === 'daily' && "bg-amber-500/10 text-amber-500",
-                    item.type === 'contract' && "bg-rose-500/10 text-rose-500",
-                  )}>
-                    <Clock size={18} />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-xs font-black truncate leading-tight">{item.title}</p>
-                    <p className="text-[10px] text-text-secondary font-bold uppercase tracking-wider mt-0.5">{item.time}</p>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </section>
         </div>
 
         {/* ── DESKTOP DASHBOARD ─────────────────────────────── */}
@@ -367,38 +334,14 @@ const Dashboard = ({
             </div>
           </div>
 
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 pb-12">
-            <div className="lg:col-span-2 glass-card p-8">
-              <div className="flex justify-between items-center mb-8">
-                <h3 className="text-xl font-black tracking-tight">Timeline de Auditoria</h3>
-                <button onClick={handleExportLogs} className="px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest btn-surface">Exportar Logs</button>
-              </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                {auditItems.slice(0, 6).map((item, idx) => (
-                  <div 
-                    key={`dash-audit-${item.id}-${idx}`} 
-                    onClick={() => setActiveView(item.type === 'fuel' ? 'combustivel' : item.type === 'checklist' ? 'checklists' : item.type === 'daily' ? 'diarias' : 'contratos')}
-                    className="flex items-center gap-4 p-5 bg-surface-hover/30 border border-border rounded-2xl hover:border-primary/40 hover:bg-surface-hover/50 transition-all group cursor-pointer"
-                  >
-                    <div className={cn("p-3 rounded-xl shadow-inner", item.type === 'fuel' && "bg-blue-500/10 text-blue-500", item.type === 'checklist' && "bg-emerald-500/10 text-emerald-500", item.type === 'daily' && "bg-amber-500/10 text-amber-500", item.type === 'contract' && "bg-rose-500/10 text-rose-500")}>
-                      <Clock size={20} />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-black truncate group-hover:text-primary transition-colors">{item.title}</p>
-                      <p className="text-[10px] text-text-secondary font-black uppercase tracking-tighter mt-1">{item.user} • {item.time}</p>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            <div className="glass-card p-8 bg-primary/5 border-primary/20 flex flex-col items-center justify-center text-center">
+          <div className="flex flex-col gap-8 pb-12">
+            <div className="glass-card p-8 bg-primary/5 border-primary/20 flex flex-col items-center justify-center text-center py-16">
               <div className="w-20 h-20 bg-primary/20 rounded-3xl flex items-center justify-center text-primary mb-6 shadow-2xl shadow-primary/20">
                 <BarChart3 size={40} />
               </div>
               <h4 className="text-2xl font-black tracking-tighter mb-3">Relatórios Dinâmicos</h4>
-              <p className="text-text-secondary font-medium mb-8">Acesse análises customizadas e exporte dados para apresentações em PDF ou Excel.</p>
-              <button onClick={() => setActiveView('relatorios')} className="w-full py-4 rounded-2xl font-black uppercase tracking-widest text-xs btn-primary shadow-lg shadow-primary/20">Ir para Relatórios</button>
+              <p className="text-text-secondary font-medium mb-8 max-w-lg mx-auto">Acesse análises customizadas e exporte dados para apresentações em PDF ou Excel.</p>
+              <button onClick={() => setActiveView('relatorios')} className="max-w-xs w-full py-4 rounded-2xl font-black uppercase tracking-widest text-xs btn-primary shadow-lg shadow-primary/20">Ir para Relatórios</button>
             </div>
           </div>
         </div>
