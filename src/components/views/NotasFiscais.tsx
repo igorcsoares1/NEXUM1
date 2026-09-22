@@ -130,7 +130,7 @@ export default function NotasFiscais({ currentUser, addNotification }: NotasFisc
       setFormData({ numero_nota: '', fornecedor: '', valor: '', data_emissao: new Date().toISOString().split('T')[0], contrato_id: '', observacao: '' });
       setIsAvulso(false);
       await fetchNotas();
-      setActiveTab('receber');
+      setActiveTab(canReceive ? 'receber' : 'recebidas');
     } catch (error: any) {
       console.error('Erro ao enviar:', error);
       if (addNotification) addNotification("Erro", `Falha ao salvar: ${error?.message || 'Erro desconhecido'}`, "error");
@@ -277,13 +277,15 @@ export default function NotasFiscais({ currentUser, addNotification }: NotasFisc
             {loading ? "Carregando..." : "Atualizar"}
           </button>
           
-          <button
-            onClick={generateReport}
-            className="flex items-center justify-center gap-2 px-6 py-3 bg-accent hover:bg-accent-hover text-white rounded-2xl font-black transition-all shadow-lg shadow-accent/20 active:scale-95 shrink-0"
-          >
-            <PenTool size={18} />
-            Relatório
-          </button>
+          {!(currentUser?.role === 'compras' && activeTab === 'recebidas') && (
+            <button
+              onClick={generateReport}
+              className="flex items-center justify-center gap-2 px-6 py-3 bg-accent hover:bg-accent-hover text-white rounded-2xl font-black transition-all shadow-lg shadow-accent/20 active:scale-95 shrink-0"
+            >
+              <PenTool size={18} />
+              Relatório
+            </button>
+          )}
         </div>
 
         <div className="flex items-center p-1 bg-surface border border-border/40 rounded-2xl w-fit">
@@ -303,15 +305,13 @@ export default function NotasFiscais({ currentUser, addNotification }: NotasFisc
               Receber
             </button>
           )}
-          {currentUser?.role !== 'compras' && (
-            <button
-              onClick={() => setActiveTab('recebidas')}
-              className={cn("flex items-center gap-2 px-6 py-2.5 rounded-xl font-black text-sm transition-all", activeTab === 'recebidas' ? "bg-primary text-white shadow-md shadow-primary/20" : "text-text-secondary hover:text-text-primary")}
-            >
-              <CheckCircle2 size={16} className="text-emerald-500" />
-              Recebidas
-            </button>
-          )}
+          <button
+            onClick={() => setActiveTab('recebidas')}
+            className={cn("flex items-center gap-2 px-6 py-2.5 rounded-xl font-black text-sm transition-all", activeTab === 'recebidas' ? "bg-primary text-white shadow-md shadow-primary/20" : "text-text-secondary hover:text-text-primary")}
+          >
+            <CheckCircle2 size={16} className="text-emerald-500" />
+            Recebidas
+          </button>
         </div>
       </header>
 

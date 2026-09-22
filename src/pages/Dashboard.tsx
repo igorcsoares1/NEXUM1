@@ -24,7 +24,7 @@ import {
 import { format, differenceInDays, parseISO } from 'date-fns';
 import { StatCard } from '../components/ui/StatCard';
 import { cn } from '../lib/utils';
-import { FuelRecord, DailyRecord, Contract, ChecklistItem, AuditItem, View, SystemSettings } from '../types';
+import { User, FuelRecord, DailyRecord, Contract, ChecklistItem, AuditItem, View, SystemSettings } from '../types';
 import { parseCurrencyToNumber } from '../utils/format';
 import { generateAuditLogsPDF } from '../utils/pdf';
 

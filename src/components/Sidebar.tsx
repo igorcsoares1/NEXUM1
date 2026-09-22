@@ -50,6 +50,11 @@ export const Sidebar = ({
     
     // Superadmin has access to everything
     if (currentUser.role === 'superadmin') return true;
+
+    // Explicitly block visualizador from Notas Fiscais as requested
+    if (currentUser.role === 'visualizador' && view === 'notas_fiscais') {
+      return false;
+    }
     
     // For all other roles, strictly follow the permissions array
     if (Array.isArray(currentUser.permissions)) {
