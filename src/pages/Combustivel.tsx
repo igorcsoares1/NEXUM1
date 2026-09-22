@@ -361,29 +361,7 @@ const Combustivel = ({
                 Excluir ({selectedFuelIds.length})
               </button>
             )}
-            <button
-              onClick={() => {
-                if (!isImporting && fileInputRef.current) {
-                  fileInputRef.current.click();
-                }
-              }}
-              disabled={isImporting}
-              className={cn(
-                "flex-1 sm:flex-none px-4 py-2.5 rounded-xl font-bold flex items-center justify-center gap-2 text-sm btn-surface transition-all",
-                isImporting ? "opacity-50 cursor-not-allowed" : "cursor-pointer hover:bg-surface-hover active:scale-95"
-              )}
-              title={isImporting ? "Importação em andamento..." : "Importar arquivo CSV ou Excel"}
-            >
-              {isImporting ? <RefreshCw size={18} className="animate-spin" /> : <FileText size={18} />}
-              {isImporting ? "Processando..." : "Importar Planilha"}
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept=".csv,.xlsx,.xls"
-                className="hidden"
-                onChange={handleImportFuel}
-              />
-            </button>
+
             <button
               onClick={handleExportCSV}
               className="flex-1 sm:flex-none px-4 py-2.5 rounded-xl font-bold flex items-center justify-center gap-2 text-sm btn-surface"

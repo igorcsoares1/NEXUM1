@@ -111,6 +111,9 @@ interface ModalsProps {
   handleRemoveItem: (id: string) => void;
   contracts: Contract[];
   servidores: Servidor[];
+  canDelete?: boolean;
+  handleDeleteDaily?: (id: string) => void;
+  handleDeleteChecklist?: (id: string) => void;
 }
 
 export const Modals = ({
@@ -127,7 +130,8 @@ export const Modals = ({
   handleAddTramitation,
   showCriticalModal, setShowCriticalModal, criticalContracts,
   showSelectedChecklistReport, setShowSelectedChecklistReport,
-  handleGenerateAIItems, isGeneratingAI, newItemLabel, setNewItemLabel, handleAddItem, handleRemoveItem, contracts, servidores = []
+  handleGenerateAIItems, isGeneratingAI, newItemLabel, setNewItemLabel, handleAddItem, handleRemoveItem, contracts, servidores = [],
+  canDelete, handleDeleteDaily, handleDeleteChecklist
 }: ModalsProps) => {
   const [newTramitation, setNewTramitation] = React.useState({ sector: '', action: '' });
   const [showTramitationForm, setShowTramitationForm] = React.useState(false);
@@ -507,6 +511,19 @@ export const Modals = ({
                   />
                 </div>
                 <div className="flex gap-3 pt-4 border-t border-border mt-auto shrink-0">
+                  {editingDaily && canDelete && handleDeleteDaily && (
+                    <button 
+                      type="button" 
+                      onClick={() => {
+                        handleDeleteDaily(editingDaily.id);
+                        setShowNewDailyModal(false);
+                      }} 
+                      className="p-3.5 rounded-2xl bg-rose-500/10 text-rose-500 hover:bg-rose-500/20 transition-all border border-rose-500/20"
+                      title="Excluir Diária"
+                    >
+                      <Trash2 size={20} />
+                    </button>
+                  )}
                   <button type="button" onClick={() => setShowNewDailyModal(false)} className="flex-1 px-6 py-3.5 rounded-2xl font-black uppercase tracking-widest text-[10px] text-text-secondary hover:bg-surface-hover transition-all">Cancelar</button>
                   <button type="submit" disabled={isSaving} className="flex-[2] bg-primary hover:bg-primary/90 disabled:bg-primary/50 text-white px-8 py-3.5 rounded-2xl font-black uppercase tracking-widest text-[10px] flex items-center justify-center gap-2 transition-all shadow-xl shadow-primary/20">
                     {isSaving ? <RefreshCw className="animate-spin" size={16} /> : <Save size={16} />}
@@ -787,6 +804,19 @@ export const Modals = ({
               </div>
 
               <div className="p-6 sm:p-8 bg-surface-hover/30 border-t border-border flex gap-4 shrink-0 px-4 sm:px-8 mt-auto sticky bottom-0 bg-background/80 backdrop-blur-xl z-20">
+                {editingChecklist && canDelete && handleDeleteChecklist && (
+                  <button 
+                    type="button" 
+                    onClick={() => {
+                      handleDeleteChecklist(editingChecklist.id);
+                      setShowNewChecklistModal(false);
+                    }} 
+                    className="p-3.5 rounded-2xl bg-rose-500/10 text-rose-500 hover:bg-rose-500/20 transition-all border border-rose-500/20"
+                    title="Excluir Processo"
+                  >
+                    <Trash2 size={20} />
+                  </button>
+                )}
                 <button 
                   type="button"
                   onClick={() => setShowNewChecklistModal(false)}
@@ -1538,6 +1568,18 @@ export const Modals = ({
                 )}
               </div>
               <div className="p-6 sm:p-8 border-t border-border bg-surface-hover/30 flex gap-4 sticky bottom-0 bg-background/80 backdrop-blur-xl z-20 shrink-0">
+                {canDelete && handleDeleteChecklist && (
+                  <button 
+                    onClick={() => {
+                      handleDeleteChecklist(selectedChecklist.id);
+                      setShowDetailsModal(false);
+                    }}
+                    className="p-4 bg-rose-500/10 text-rose-500 hover:bg-rose-500/20 rounded-2xl transition-all border border-rose-500/20 active:scale-95"
+                    title="Excluir Processo"
+                  >
+                    <Trash2 size={20} />
+                  </button>
+                )}
                 <button 
                   onClick={() => setShowDetailsModal(false)} 
                   className="flex-1 py-4 px-6 rounded-2xl font-black uppercase tracking-widest text-[10px] sm:text-xs text-text-secondary bg-surface border border-border hover:bg-surface-hover transition-all active:scale-95 shadow-inner"

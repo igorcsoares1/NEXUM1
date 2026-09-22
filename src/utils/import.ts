@@ -227,137 +227,110 @@ export const handleImportFuel = async (
   setIsImporting(true);
 
   try {
-    const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+    const data = await readFileAsDataURL(file);
+    const base64 = data.split(',')[1];
+    const workbook = XLSX.read(base64, { type: 'base64' });
+    const worksheet = workbook.Sheets[workbook.SheetNames[0]];
+    const json: any[] = XLSX.utils.sheet_to_json(worksheet, { defval: "" });
 
-    const processBatch = async (batchData: any, batchInfo: string, retries = 5): Promise<any[]> => {
-      const today = new Date().toISOString().split('T')[0];
-      const prompt = `Extraia os dados de abastecimentos de combustível desta planilha da Prefeitura Municipal (${batchInfo}).
+    console.log("Total linhas: " + json.length);
+    console.log("Colunas: " + Object.keys(json[0] || {}).join(", "));
 
-A planilha tem colunas: VEICULO, TOTAL LITROS, R$/LITRO, COMBUSTIVEL, R$ TOTAL.
-Pode ter DOIS BLOCOS lado a lado com as mesmas colunas (quinzena 1 e quinzena 2) — extraia TODOS os registros de AMBOS os blocos.
-O campo VEICULO contém nome do veículo e placa entre parênteses, ex: "L200 (PKB-2042)".
+    const records: any[] = [];
+    const today = new Date().toISOString().split('T')[0];
+    const prefId = currentUser?.prefeituraId || '1';
 
-IGNORE: linhas com "VALOR TOTAL", linhas completamente vazias e linhas de rodapé.
+    for (let i = 0; i < json.length; i++) {
+      const row = json[i];
 
-Para cada veículo válido, crie um objeto JSON:
-{
-  "vehicle": "nome completo com placa exatamente como está",
-  "driver": "",
-  "date": "${today}",
-  "quantity": "total litros + L, ex: 780 L",
-  "cost": "R$ TOTAL formatado, ex: R$ 5.374,20",
-  "status": "concluido",
-  "fuelType": "DIESEL ou GASOLINA",
-  "unitPrice": "R$/LITRO formatado, ex: R$ 6,89",
-  "plate": "somente a placa, ex: PKB-2042",
-  "yearModel": "",
-  "official": "",
-  "renavam": "",
-  "kmPerLiter": "",
-  "kmReading": ""
-}
+      // BLOCO 1
+      const veh1 = row['VEICULO'] ? String(row['VEICULO']).trim() : '';
+      const lit1 = row['TOTAL LITROS'] ? String(row['TOTAL LITROS']).trim() : '';
+      const pre1 = row['R$/LITRO'] ? String(row['R$/LITRO']).trim() : '';
+      const com1 = row['COMBUSTIVEL'] ? String(row['COMBUSTIVEL']).trim() : '';
+      const tot1 = row['R$ TOTAL'] ? String(row['R$ TOTAL']).trim() : '';
 
-Retorne EXCLUSIVAMENTE um array JSON válido sem texto adicional, markdown ou explicações.
-NÃO TRUNQUE A LISTA — inclua TODOS os veículos encontrados.`;
-
-      const contents = [
-        {
-          role: 'user',
-          parts: [
-            { text: prompt },
-            typeof batchData === 'string' ? { text: batchData } : batchData
-          ]
-        }
-      ];
-
-      try {
-        const text = await callAIProxy(contents, {
-          responseMimeType: "application/json",
-          temperature: 0.1,
-        }, "gemini-2.0-flash");
-
-        return safeJsonParse(text);
-      } catch (error: any) {
-        if ((error?.message?.includes('429') || error?.message?.includes('RESOURCE_EXHAUSTED')) && retries > 0) {
-          console.warn(`Rate limit hit for ${batchInfo}. Retrying in 15 seconds... (${retries} retries left)`);
-          await delay(15000);
-          return processBatch(batchData, batchInfo, retries - 1);
-        }
-        throw error;
+      if (veh1 && lit1 && !veh1.toLowerCase().includes('total')) {
+        const rec = parseRecord(veh1, lit1, pre1, com1, tot1, today, prefId);
+        if (rec) records.push(rec);
       }
-    };
 
-    let allExtractedRecords: any[] = [];
-    const fileName = file.name.toLowerCase();
+      // BLOCO 2
+      const veh2 = row['VEICULO .1'] ? String(row['VEICULO .1']).trim() : '';
+      const lit2 = row['TOTAL LITROS.1'] ? String(row['TOTAL LITROS.1']).trim() : '';
+      const pre2 = row['R$/LITRO.1'] ? String(row['R$/LITRO.1']).trim() : '';
+      const com2 = row['COMBUSTIVEL'] ? String(row['COMBUSTIVEL']).trim() : '';
+      const tot2 = row['R$ TOTAL.1'] ? String(row['R$ TOTAL.1']).trim() : '';
 
-    if (fileName.endsWith('.csv') || fileName.endsWith('.xlsx') || fileName.endsWith('.xls')) {
-      const data = await readFileAsDataURL(file);
-      const base64 = data.split(',')[1];
-      const workbook = XLSX.read(base64, { type: 'base64' });
-      
-      for (const sheetName of workbook.SheetNames) {
-        const worksheet = workbook.Sheets[sheetName];
-        const csv = XLSX.utils.sheet_to_csv(worksheet);
-        if (csv.trim().length === 0) continue;
-        
-        const lines = csv.split('\n');
-        const header = lines.slice(0, 2).join('\n');
-        const batchSize = 50; // Reduced from 100 to avoid timeouts during high demand
-        const totalBatches = Math.ceil(lines.length / batchSize);
-        
-        for (let i = 0; i < totalBatches; i++) {
-          const start = i * batchSize;
-          const end = Math.min(start + batchSize, lines.length);
-          const chunkLines = lines.slice(start, end);
-          const chunk = (i === 0 ? chunkLines.join('\n') : header + '\n' + chunkLines.join('\n'));
-          if (chunk.trim().length < 10) continue;
-          const batchResults = await processBatch(chunk, `Planilha ${sheetName} Lote ${i+1}/${totalBatches}`);
-          allExtractedRecords = [...allExtractedRecords, ...batchResults];
-          if (i < totalBatches - 1) await delay(5000);
-        }
+      if (veh2 && lit2 && !veh2.toLowerCase().includes('total')) {
+        const rec = parseRecord(veh2, lit2, pre2, com2, tot2, today, prefId);
+        if (rec) records.push(rec);
       }
-    } else if (file.type === 'application/pdf' || fileName.endsWith('.pdf')) {
-      const arrayBuffer = await readFileAsArrayBuffer(file);
-      const pdfChunks = await chunkPdfBase64(arrayBuffer, 3);
-      
-      for (let i = 0; i < pdfChunks.length; i++) {
-        const chunk = pdfChunks[i];
-        const batchResults = await processBatch({
-          inlineData: {
-            mimeType: "application/pdf",
-            data: chunk.base64
-          }
-        }, `Páginas PDF ${chunk.startPage}-${chunk.endPage}`);
-        allExtractedRecords = [...allExtractedRecords, ...batchResults];
-        if (i < pdfChunks.length - 1) await delay(5000);
-      }
-    } else {
-      throw new Error("Formato de arquivo não suportado. Use CSV, Excel ou PDF.");
     }
 
-    if (allExtractedRecords.length > 0) {
-      const recordsToInsert = allExtractedRecords.map(record => ({
-        ...record,
-        prefeituraId: currentUser?.prefeituraId || '1'
-      }));
+    console.log("Registros extraidos: " + records.length);
 
-      const { error } = await supabase
-        .from('fuelRecords')
-        .insert(recordsToInsert);
-
-      if (error) throw error;
-      addNotification("Sucesso", `${allExtractedRecords.length} registros importados com sucesso!`, "success");
-    } else {
-      throw new Error("A IA não conseguiu estruturar dados de combustível legíveis neste arquivo.");
+    if (records.length === 0) {
+      throw new Error("Nenhum registro encontrado na planilha");
     }
+
+    const result = await supabase.from('fuelRecords').insert(records);
+    if (result.error) throw result.error;
+
+    addNotification(
+      "Sucesso",
+      records.length + " registros importados!",
+      "success"
+    );
+
   } catch (error: any) {
-    console.error("Erro na importação de combustível:", error);
-    addNotification("Erro na Importação", error.message || "Erro ao processar arquivo.", "error");
+    console.error("Erro: " + error.message);
+    addNotification(
+      "Erro",
+      error.message || "Falha na importacao",
+      "error"
+    );
   } finally {
     setIsImporting(false);
     if (e.target) e.target.value = '';
   }
 };
+
+function parseRecord(vehicle: string, quantity: string, unitPrice: string, fuelType: string, cost: string, date: string, prefId: string): any {
+  if (!vehicle || !quantity) return null;
+  vehicle = String(vehicle).trim();
+  if (vehicle.toLowerCase().includes('total') || vehicle === '') return null;
+
+  let plate = '';
+  const m = vehicle.match(/\(([A-Z0-9-]+)\)/);
+  if (m) plate = m[1];
+
+  const qty = parseFloat(String(quantity).replace(/[^0-9.,]/g, '').replace(',', '.')) || 0;
+  const uPrice = parseFloat(String(unitPrice).replace(/R\$\s*/i, '').replace(/[^0-9.,]/g, '').replace(',', '.')) || 0;
+  const tot = parseFloat(String(cost).replace(/R\$\s*/i, '').replace(/[^0-9.,]/g, '').replace(',', '.')) || 0;
+  const fuel = String(fuelType).toLowerCase().includes('gasolina') ? 'GASOLINA' : 'DIESEL';
+
+  return {
+    prefeituraId: prefId,
+    vehicle: vehicle,
+    plate: plate,
+    driver: '',
+    date: date,
+    quantity: qty.toString(),
+    cost: tot > 0 ? 'R$ ' + tot.toFixed(2) : '',
+    fuelType: fuel,
+    unitPrice: uPrice > 0 ? 'R$ ' + uPrice.toFixed(2) : '',
+    status: 'concluido',
+    official: '',
+    renavam: '',
+    yearModel: '',
+    kmPerLiter: '',
+    kmReading: '',
+    createdAt: new Date().toISOString()
+  };
+}
+
+
 
 export const handleSmartImport = async (
   file: File,

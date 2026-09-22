@@ -788,18 +788,82 @@ export default function App() {
     );
   };
 
-  const handleImportFuelLocal = (e: React.ChangeEvent<HTMLInputElement>) => {
-    handleImportFuel(
-      e,
-      setIsImporting,
-      addNotification,
-      currentUser
-    );
+  const handleImportFuelLocal = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setIsImporting(true);
+
+    try {
+      const XLSX = await import('xlsx');
+      const reader = new FileReader();
+      
+      reader.onload = async (event) => {
+        try {
+          const data = event.target?.result;
+          const workbook = XLSX.read(data, { type: 'binary' });
+          const worksheet = workbook.Sheets[workbook.SheetNames[0]];
+          const rows = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
+
+          const records: any[] = [];
+          const today = new Date().toISOString().split('T')[0];
+
+          for (let i = 1; i < rows.length; i++) {
+            const row = rows[i] as any[];
+            if (!row[0] || row[0].toString().toLowerCase().includes('total')) continue;
+
+            const vehicle = row[0]?.toString().trim();
+            const liters = row[1];
+            const unitPrice = row[2];
+            const fuelType = row[3]?.toString().trim() || 'DIESEL';
+            const totalCost = row[4];
+
+            if (!vehicle || !liters || !unitPrice || !totalCost) continue;
+
+            records.push({
+              vehicle: vehicle,
+              driver: '',
+              date: today,
+              quantity: parseFloat(liters).toFixed(1),
+              cost: totalCost,
+              status: 'concluido',
+              fuelType: fuelType.toUpperCase(),
+              unitPrice: parseFloat(unitPrice).toFixed(2),
+              plate: vehicle.match(/\(([A-Z0-9-]+)\)/) ? vehicle.match(/\(([A-Z0-9-]+)\)/)[1] : '',
+              prefeituraId: currentUser?.prefeituraId || '1',
+              yearModel: '',
+              official: '',
+              renavam: '',
+              kmPerLiter: '',
+              kmReading: ''
+            });
+          }
+
+          if (records.length === 0) throw new Error('Nenhum registro encontrado');
+
+          const { error } = await supabase.from('fuelRecords').insert(records);
+          if (error) throw error;
+
+          await fetchFuelRecords();
+          addNotification('Sucesso', records.length + ' registros importados!', 'success');
+        } catch (err: any) {
+          addNotification('Erro', err.message || 'Erro ao processar', 'error');
+        } finally {
+          setIsImporting(false);
+          if (e.target) e.target.value = '';
+        }
+      };
+
+      reader.readAsBinaryString(file);
+    } catch (err: any) {
+      setIsImporting(false);
+      addNotification('Erro', err.message || 'Erro na importação', 'error');
+    }
   };
 
   const canAdd = isGestor;
   const canEdit = isGestor;
-  const canDelete = isAdmin;
+  const canDelete = isGestor;
 
   const handleApproveDaily = async (record: DailyRecord) => {
     await dailyService.handleApproveDaily(record, currentUser!, addNotification);
@@ -1637,6 +1701,9 @@ export default function App() {
       handleRemoveItem={handleRemoveItem}
       contracts={contracts}
       servidores={servidores}
+      canDelete={canDelete}
+      handleDeleteDaily={handleDeleteDaily}
+      handleDeleteChecklist={handleDeleteChecklist}
     />
   );
 

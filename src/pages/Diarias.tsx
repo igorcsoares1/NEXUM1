@@ -619,12 +619,15 @@ setNewDailyData({
                         >
                           <Settings size={18} />
                         </button>
-                        <button 
-                          onClick={() => handleDeleteDaily(record.id)}
-                          className="p-2 hover:bg-rose-500/10 rounded-xl text-rose-500 transition-all active:scale-95"
-                        >
-                          <Trash2 size={18} />
-                        </button>
+                        {canDelete && (
+                          <button 
+                            onClick={() => handleDeleteDaily(record.id)}
+                            title="Excluir Diária"
+                            className="p-2 hover:bg-rose-500/10 rounded-xl text-rose-500 transition-all active:scale-95"
+                          >
+                            <Trash2 size={18} />
+                          </button>
+                        )}
                       </div>
                     </td>
                   </tr>
