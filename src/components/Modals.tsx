@@ -1643,11 +1643,12 @@ export const Modals = ({
                     <select 
                       className="w-full bg-surface-hover border border-border rounded-xl px-4 py-3 outline-none focus:border-primary transition-all text-sm font-bold shadow-inner appearance-none"
                       value={newUserData.role}
-                      onChange={(e) => setNewUserData({ ...newUserData, role: e.target.value })}
+                      onChange={(e) => setNewUserData({ ...newUserData, role: e.target.value as any })}
                     >
-                      <option value="visualizador">Visualizador</option>
+                      <option value="superadmin">Super Admin</option>
                       <option value="gestor">Gestor</option>
-                      <option value="admin">Administrador</option>
+                      <option value="compras">Compras</option>
+                      <option value="visualizador">Visualizador</option>
                     </select>
                   </div>
                   <div className="space-y-1.5">
@@ -1686,12 +1687,12 @@ export const Modals = ({
                       { id: 'usuarios', label: 'Usuários' },
                       { id: 'relatorios', label: 'Relatórios' },
                       { id: 'relatorio_executivo', label: 'Rel. Executivo' },
-                      { id: 'protocolo-entrada', label: 'Prot. Entrada' },
-                      { id: 'protocolo-saida', label: 'Prot. Saída' },
-                      { id: 'protocolo-processos', label: 'Processos' },
-                      { id: 'protocolo-tramitacao', label: 'Tramitação' },
-                      { id: 'protocolo-pendencias', label: 'Pendências' },
-                      { id: 'protocolo-arquivos', label: 'Arquivo' },
+                      { id: 'protocolo-entrada', label: 'Protocolo - Entrada' },
+                      { id: 'protocolo-saida', label: 'Protocolo - Saída' },
+                      { id: 'protocolo-processos', label: 'Protocolo - Processos' },
+                      { id: 'protocolo-tramitacao', label: 'Protocolo - Tramitação' },
+                      { id: 'protocolo-pendencias', label: 'Protocolo - Pendências' },
+                      { id: 'protocolo-arquivos', label: 'Protocolo - Arquivos' },
                       { id: 'manual', label: 'Manual' },
                       { id: 'configuracoes', label: 'Configurações' }
                     ].map(perm => (

@@ -313,25 +313,85 @@ export default function App() {
 
   }, [contracts, addAlert, isLoggedIn]);
 
-  const chartData = useMemo(() => {
-    const months = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
-    const data = months.map(m => ({ name: m, value: 0 }));
+  const [dashboardDateRange, setDashboardDateRange] = useState('6months');
+  const [dashboardStartDate, setDashboardStartDate] = useState(
+    () => {
+      const d = new Date();
+      d.setMonth(d.getMonth() - 6);
+      return d.toISOString().split('T')[0];
+    }
+  );
+  const [dashboardEndDate, setDashboardEndDate] = useState(
+    () => new Date().toISOString().split('T')[0]
+  );
 
-    fuelRecords.forEach(r => {
-      try {
-        const date = new Date(r.date);
-        const monthIdx = date.getMonth();
-        const cost = parseCurrencyToNumber(r.cost);
-        if (!isNaN(cost) && monthIdx >= 0 && monthIdx < 12) {
-          data[monthIdx].value += cost;
-        }
-      } catch (e) {
-        console.warn("Erro ao processar data/custo para gráfico:", r);
+  const dashboardFilteredData = useMemo(() => {
+    let start: Date;
+    let end: Date = new Date();
+
+    if (dashboardDateRange === 'custom' && dashboardStartDate && dashboardEndDate) {
+      start = new Date(dashboardStartDate);
+      end = new Date(dashboardEndDate);
+    } else {
+      const months = dashboardDateRange === '3months' ? 3 : dashboardDateRange === '12months' ? 12 : 6;
+      start = new Date();
+      start.setMonth(start.getMonth() - months);
+    }
+
+    const filterByDate = (dateStr: string) => {
+      const d = new Date(dateStr);
+      return d >= start && d <= end;
+    };
+
+    return {
+      fuel: fuelRecords.filter(r => filterByDate(r.date)),
+      daily: dailyRecords.filter(r => filterByDate(r.date)),
+      checklists: checklistRecords.filter(r => filterByDate(r.submissionDate)),
+      startDate: start,
+      endDate: end
+    };
+  }, [fuelRecords, dailyRecords, checklistRecords, dashboardDateRange, dashboardStartDate, dashboardEndDate]);
+
+  const chartData = useMemo(() => {
+    const { fuel, daily, checklists, startDate, endDate } = dashboardFilteredData;
+    
+    // Generate months between start and end
+    const data: { name: string; value: number; timestamp: number }[] = [];
+    let current = new Date(startDate);
+    current.setDate(1); // Start of month
+
+    const monthNames = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
+
+    while (current <= endDate) {
+      data.push({
+        name: `${monthNames[current.getMonth()]}/${String(current.getFullYear()).slice(2)}`,
+        value: 0,
+        timestamp: current.getTime()
+      });
+      current.setMonth(current.getMonth() + 1);
+    }
+
+    const addToChart = (dateStr: string, amount: number) => {
+      const d = new Date(dateStr);
+      const monthIdx = d.getMonth();
+      const year = d.getFullYear();
+      
+      const entry = data.find(item => {
+        const itemDate = new Date(item.timestamp);
+        return itemDate.getMonth() === monthIdx && itemDate.getFullYear() === year;
+      });
+
+      if (entry) {
+        entry.value += amount;
       }
-    });
+    };
+
+    fuel.forEach(r => addToChart(r.date, parseCurrencyToNumber(r.cost)));
+    daily.forEach(r => addToChart(r.date, parseCurrencyToNumber(r.value)));
+    checklists.forEach(r => addToChart(r.submissionDate, parseCurrencyToNumber(r.invoiceValue)));
 
     return data;
-  }, [fuelRecords]);
+  }, [dashboardFilteredData]);
 
   const auditItems = useMemo(() => {
     const items: any[] = [];
@@ -378,7 +438,6 @@ export default function App() {
   const [showDailyDiariaReport, setShowDailyDiariaReport] = useState(false);
   const [showSelectedChecklistReport, setShowSelectedChecklistReport] = useState(false);
   const [showChecklistSelectionModal, setShowChecklistSelectionModal] = useState(false);
-  const [dashboardDateRange, setDashboardDateRange] = useState('6months');
   const [healthCheck, setHealthCheck] = useState<HealthCheckResult | null>(null);
   const [isCheckingHealth, setIsCheckingHealth] = useState(false);
 
@@ -1645,10 +1704,11 @@ export default function App() {
       case 'dashboard':
         return (
           <Dashboard
-            fuelRecords={fuelRecords}
-            dailyRecords={dailyRecords}
+            currentUser={currentUser}
+            fuelRecords={dashboardFilteredData.fuel}
+            dailyRecords={dashboardFilteredData.daily}
             contracts={contracts}
-            checklistRecords={checklistRecords}
+            checklistRecords={dashboardFilteredData.checklists}
             setActiveView={handleViewChange}
             setContractFilter={(filter) => {
               setContractFilter(filter as any);
@@ -1656,6 +1716,10 @@ export default function App() {
             }}
             dashboardDateRange={dashboardDateRange}
             setDashboardDateRange={setDashboardDateRange}
+            dashboardStartDate={dashboardStartDate}
+            setDashboardStartDate={setDashboardStartDate}
+            dashboardEndDate={dashboardEndDate}
+            setDashboardEndDate={setDashboardEndDate}
             chartData={chartData}
             auditItems={auditItems}
             addNotification={addNotification}
@@ -1850,6 +1914,7 @@ export default function App() {
       case 'relatorios':
         return (
           <Relatorios
+            currentUser={currentUser}
             fuelRecords={fuelRecords}
             dailyRecords={dailyRecords}
             contracts={contracts}

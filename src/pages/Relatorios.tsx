@@ -22,8 +22,10 @@ import {
 import { motion } from 'motion/react';
 import { cn } from '../lib/utils';
 import { PrintHeader } from '../components/PrintHeader';
+import { User } from '../types';
 
 interface RelatoriosProps {
+  currentUser: User | null;
   fuelRecords: any[];
   dailyRecords: any[];
   contracts: any[];
@@ -35,6 +37,7 @@ interface RelatoriosProps {
 }
 
 const Relatorios = ({
+  currentUser,
   fuelRecords,
   dailyRecords,
   contracts,
@@ -65,19 +68,21 @@ const Relatorios = ({
               <h2 className="text-2xl font-black tracking-tighter">Relatórios</h2>
               <p className="text-xs text-text-secondary font-bold uppercase tracking-widest mt-1">Auditoria & Analytics</p>
             </div>
-            <div className="flex gap-2">
-               <button onClick={handlePrint} className="w-10 h-10 flex items-center justify-center bg-surface border border-border rounded-xl text-text-primary active:scale-95 transition-all">
-                <Printer size={18} />
-              </button>
-              <button 
-                onClick={() => handleExportPDF('geral')} 
-                disabled={isExportingPDF}
-                className="px-4 h-10 flex items-center justify-center bg-primary text-white rounded-xl shadow-lg shadow-primary/20 active:scale-95 transition-all text-[10px] font-black uppercase tracking-widest gap-2"
-              >
-                {isExportingPDF ? <div className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <Download size={14} />}
-                Exportar
-              </button>
-            </div>
+            {currentUser?.role !== 'visualizador' && (
+              <div className="flex gap-2">
+                 <button onClick={handlePrint} className="w-10 h-10 flex items-center justify-center bg-surface border border-border rounded-xl text-text-primary active:scale-95 transition-all">
+                  <Printer size={18} />
+                </button>
+                <button 
+                  onClick={() => handleExportPDF('geral')} 
+                  disabled={isExportingPDF}
+                  className="px-4 h-10 flex items-center justify-center bg-primary text-white rounded-xl shadow-lg shadow-primary/20 active:scale-95 transition-all text-[10px] font-black uppercase tracking-widest gap-2"
+                >
+                  {isExportingPDF ? <div className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <Download size={14} />}
+                  Exportar
+                </button>
+              </div>
+            )}
           </header>
 
           <div className="p-4 space-y-6">
@@ -130,19 +135,21 @@ const Relatorios = ({
               <h1 className="text-4xl font-black tracking-tighter">Relatórios e Auditoria</h1>
               <p className="text-text-secondary font-medium text-lg">Gere documentos oficiais e analise indicadores municipais.</p>
             </div>
-            <div className="flex gap-3">
-              <button onClick={handlePrint} className="px-6 py-3 rounded-2xl font-black uppercase tracking-widest text-xs flex items-center gap-2 btn-surface">
-                <Printer size={18} /> Imprimir Página
-              </button>
-              <button 
-                onClick={() => handleExportPDF('geral')} 
-                disabled={isExportingPDF}
-                className="px-6 py-3 rounded-2xl font-black uppercase tracking-widest text-xs flex items-center gap-2 btn-primary"
-              >
-                {isExportingPDF ? <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <Download size={18} />}
-                Exportar Relatório Geral
-              </button>
-            </div>
+            {currentUser?.role !== 'visualizador' && (
+              <div className="flex gap-3">
+                <button onClick={handlePrint} className="px-6 py-3 rounded-2xl font-black uppercase tracking-widest text-xs flex items-center gap-2 btn-surface">
+                  <Printer size={18} /> Imprimir Página
+                </button>
+                <button 
+                  onClick={() => handleExportPDF('geral')} 
+                  disabled={isExportingPDF}
+                  className="px-6 py-3 rounded-2xl font-black uppercase tracking-widest text-xs flex items-center gap-2 btn-primary"
+                >
+                  {isExportingPDF ? <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <Download size={18} />}
+                  Exportar Relatório Geral
+                </button>
+              </div>
+            )}
           </header>
 
           <div className="grid grid-cols-4 gap-6 print:hidden">

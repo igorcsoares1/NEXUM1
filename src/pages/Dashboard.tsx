@@ -29,6 +29,7 @@ import { parseCurrencyToNumber } from '../utils/format';
 import { generateAuditLogsPDF } from '../utils/pdf';
 
 interface DashboardProps {
+  currentUser: User | null;
   fuelRecords: FuelRecord[];
   dailyRecords: DailyRecord[];
   contracts: Contract[];
@@ -37,6 +38,10 @@ interface DashboardProps {
   setContractFilter: (filter: string) => void;
   dashboardDateRange: string;
   setDashboardDateRange: (range: string) => void;
+  dashboardStartDate: string;
+  setDashboardStartDate: (date: string) => void;
+  dashboardEndDate: string;
+  setDashboardEndDate: (date: string) => void;
   chartData: any[];
   auditItems: AuditItem[];
   addNotification: (title: string, message: string, type?: 'success' | 'error' | 'info' | 'warning') => void;
@@ -44,6 +49,7 @@ interface DashboardProps {
 }
 
 const Dashboard = ({
+  currentUser,
   fuelRecords,
   dailyRecords,
   contracts,
@@ -52,6 +58,10 @@ const Dashboard = ({
   setContractFilter,
   dashboardDateRange,
   setDashboardDateRange,
+  dashboardStartDate,
+  setDashboardStartDate,
+  dashboardEndDate,
+  setDashboardEndDate,
   chartData,
   auditItems,
   addNotification,
@@ -201,11 +211,31 @@ const Dashboard = ({
             <div className="space-y-4">
               <div className="flex justify-between items-end px-1">
                 <h3 className="text-lg font-black tracking-tight">Evolução</h3>
-                <select value={dashboardDateRange} onChange={(e) => setDashboardDateRange(e.target.value)} className="bg-surface border border-border rounded-lg px-2 py-1 text-[10px] font-black uppercase tracking-widest outline-none">
-                  <option value="3months">3M</option>
-                  <option value="6months">6M</option>
-                  <option value="12months">1A</option>
-                </select>
+                <div className="flex items-center gap-2">
+                  {dashboardDateRange === 'custom' && (
+                    <div className="flex items-center gap-2 animate-in fade-in slide-in-from-right-2">
+                      <input 
+                        type="date" 
+                        value={dashboardStartDate} 
+                        onChange={(e) => setDashboardStartDate(e.target.value)}
+                        className="bg-surface border border-border rounded-lg px-2 py-1 text-[9px] font-bold outline-none"
+                      />
+                      <span className="text-[9px] font-bold text-text-secondary">até</span>
+                      <input 
+                        type="date" 
+                        value={dashboardEndDate} 
+                        onChange={(e) => setDashboardEndDate(e.target.value)}
+                        className="bg-surface border border-border rounded-lg px-2 py-1 text-[9px] font-bold outline-none"
+                      />
+                    </div>
+                  )}
+                  <select value={dashboardDateRange} onChange={(e) => setDashboardDateRange(e.target.value)} className="bg-surface border border-border rounded-lg px-2 py-1 text-[10px] font-black uppercase tracking-widest outline-none">
+                    <option value="3months">3M</option>
+                    <option value="6months">6M</option>
+                    <option value="12months">1A</option>
+                    <option value="custom">Personalizado</option>
+                  </select>
+                </div>
               </div>
               <div className="bg-surface border border-border/60 rounded-[2.5rem] p-6 h-[280px] shadow-sm">
                 <ResponsiveContainer width="100%" height="100%">
@@ -230,14 +260,16 @@ const Dashboard = ({
               <h1 className="text-4xl font-black tracking-tighter">Dashboard Operacional</h1>
               <p className="text-text-secondary font-medium text-lg">Central de monitoramento e indicadores de gestão municipal.</p>
             </div>
-            <div className="flex items-center gap-3">
-               <button onClick={handleExportLogs} className="px-5 py-2.5 rounded-xl font-black uppercase text-[10px] tracking-widest bg-surface border border-border hover:bg-surface-hover transition-all active:scale-95 shadow-sm">
-                  Exportar Logs
-               </button>
-               <button onClick={() => setActiveView('relatorios')} className="px-5 py-2.5 rounded-xl font-black uppercase text-[10px] tracking-widest btn-primary">
-                  Relatórios
-               </button>
-            </div>
+            {currentUser?.role !== 'visualizador' && (
+              <div className="flex items-center gap-3">
+                 <button onClick={handleExportLogs} className="px-5 py-2.5 rounded-xl font-black uppercase text-[10px] tracking-widest bg-surface border border-border hover:bg-surface-hover transition-all active:scale-95 shadow-sm">
+                    Exportar Logs
+                 </button>
+                 <button onClick={() => setActiveView('relatorios')} className="px-5 py-2.5 rounded-xl font-black uppercase text-[10px] tracking-widest btn-primary">
+                    Relatórios
+                 </button>
+              </div>
+            )}
           </header>
 
           {criticalContracts.length > 0 && (
@@ -288,11 +320,31 @@ const Dashboard = ({
                   <h3 className="text-xl font-black tracking-tight">Evolução de Despesas</h3>
                   <p className="text-text-secondary text-sm font-medium">Histórico consolidado nos últimos meses</p>
                 </div>
-                <select value={dashboardDateRange} onChange={(e) => setDashboardDateRange(e.target.value)} className="bg-surface border border-border rounded-xl px-4 py-2 text-xs font-black uppercase tracking-widest outline-none focus:border-primary cursor-pointer">
-                  <option value="3months">3 Meses</option>
-                  <option value="6months">6 Meses</option>
-                  <option value="12months">1 ano</option>
-                </select>
+                <div className="flex items-center gap-3">
+                  {dashboardDateRange === 'custom' && (
+                    <div className="flex items-center gap-2 animate-in fade-in slide-in-from-right-4 duration-300">
+                      <input 
+                        type="date" 
+                        value={dashboardStartDate} 
+                        onChange={(e) => setDashboardStartDate(e.target.value)}
+                        className="bg-surface border border-border rounded-xl px-3 py-2 text-xs font-bold outline-none focus:border-primary transition-all shadow-sm"
+                      />
+                      <span className="text-xs font-black text-text-secondary uppercase tracking-widest">até</span>
+                      <input 
+                        type="date" 
+                        value={dashboardEndDate} 
+                        onChange={(e) => setDashboardEndDate(e.target.value)}
+                        className="bg-surface border border-border rounded-xl px-3 py-2 text-xs font-bold outline-none focus:border-primary transition-all shadow-sm"
+                      />
+                    </div>
+                  )}
+                  <select value={dashboardDateRange} onChange={(e) => setDashboardDateRange(e.target.value)} className="bg-surface border border-border rounded-xl px-4 py-2 text-xs font-black uppercase tracking-widest outline-none focus:border-primary cursor-pointer transition-all shadow-sm hover:border-primary/50">
+                    <option value="3months">3 Meses</option>
+                    <option value="6months">6 Meses</option>
+                    <option value="12months">1 ano</option>
+                    <option value="custom">Período Customizado</option>
+                  </select>
+                </div>
               </div>
               <div className="h-[400px]">
                 <ResponsiveContainer width="100%" height="100%">
@@ -341,7 +393,9 @@ const Dashboard = ({
               </div>
               <h4 className="text-2xl font-black tracking-tighter mb-3">Relatórios Dinâmicos</h4>
               <p className="text-text-secondary font-medium mb-8 max-w-lg mx-auto">Acesse análises customizadas e exporte dados para apresentações em PDF ou Excel.</p>
-              <button onClick={() => setActiveView('relatorios')} className="max-w-xs w-full py-4 rounded-2xl font-black uppercase tracking-widest text-xs btn-primary shadow-lg shadow-primary/20">Ir para Relatórios</button>
+              {currentUser?.role !== 'visualizador' && (
+                <button onClick={() => setActiveView('relatorios')} className="max-w-xs w-full py-4 rounded-2xl font-black uppercase tracking-widest text-xs btn-primary shadow-lg shadow-primary/20">Ir para Relatórios</button>
+              )}
             </div>
           </div>
         </div>

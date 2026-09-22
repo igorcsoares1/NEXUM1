@@ -47,17 +47,33 @@ export const Sidebar = ({
 }: SidebarProps) => {
   const hasPermission = (view: View) => {
     if (!currentUser) return false;
+    
+    // Superadmin has access to everything
     if (currentUser.role === 'superadmin') return true;
     
-    // Admin has access to all except some specific if needed, but let's give Admins full access too, or strictly check permissions for everyone except superadmin?
-    // User requested: "he can only access what superadmin defined", implying strict permissions.
+    // For all other roles, strictly follow the permissions array
     if (Array.isArray(currentUser.permissions)) {
       return currentUser.permissions.includes(view);
     }
     
-    // If permissions array is missing entirely (e.g. column not created yet), default to DENY to enforce strict access,
-    // though we can still allow very basic access like dashboard if needed, but strict deny is safer.
     return false;
+  };
+
+  const hasAnyProtocolPermission = () => {
+    if (!currentUser) return false;
+    if (currentUser.role === 'superadmin') return true;
+    
+    const protocolViews: View[] = [
+      'protocolo-entrada', 
+      'protocolo-saida', 
+      'protocolo-processos', 
+      'protocolo-tramitacao', 
+      'protocolo-pendencias', 
+      'protocolo-arquivos'
+    ];
+    
+    return Array.isArray(currentUser.permissions) && 
+           protocolViews.some(v => currentUser.permissions?.includes(v));
   };
 
   const [isProtocolOpen, setIsProtocolOpen] = React.useState(false);
@@ -184,109 +200,125 @@ export const Sidebar = ({
           )}
 
           {/* PROTOCOLO GROUP */}
-          <div className="mt-2">
-            <button
-              onClick={() => setIsProtocolOpen(!isProtocolOpen)}
-              className={cn(
-                "w-full flex items-center justify-between px-4 py-3 rounded-2xl transition-all duration-300 cursor-pointer hover:bg-white/10 group",
-                activeView.startsWith('protocolo') ? "text-white" : "text-slate-300 hover:text-white"
-              )}
-            >
-              <div className="flex items-center gap-3">
-                <FileText size={20} className={cn(
-                  "transition-colors",
-                  activeView.startsWith('protocolo') ? "text-accent" : "text-slate-300 group-hover:text-white"
-                )} />
-                <span className="text-sm font-bold tracking-tight">Protocolo</span>
-              </div>
-              <ChevronDown 
-                size={16} 
+          {hasAnyProtocolPermission() && (
+            <div className="mt-2">
+              <button
+                onClick={() => setIsProtocolOpen(!isProtocolOpen)}
                 className={cn(
-                  "transition-transform duration-300",
-                  isProtocolOpen ? "rotate-180" : ""
-                )} 
-              />
-            </button>
+                  "w-full flex items-center justify-between px-4 py-3 rounded-2xl transition-all duration-300 cursor-pointer hover:bg-white/10 group",
+                  activeView.startsWith('protocolo') ? "text-white" : "text-slate-300 hover:text-white"
+                )}
+              >
+                <div className="flex items-center gap-3">
+                  <FileText size={20} className={cn(
+                    "transition-colors",
+                    activeView.startsWith('protocolo') ? "text-accent" : "text-slate-300 group-hover:text-white"
+                  )} />
+                  <span className="text-sm font-bold tracking-tight">Protocolo</span>
+                </div>
+                <ChevronDown 
+                  size={16} 
+                  className={cn(
+                    "transition-transform duration-300",
+                    isProtocolOpen ? "rotate-180" : ""
+                  )} 
+                />
+              </button>
 
-            <AnimatePresence>
-              {(isProtocolOpen || activeView.startsWith('protocolo')) && (
-                <motion.div
-                  initial={{ height: 0, opacity: 0 }}
-                  animate={{ height: 'auto', opacity: 1 }}
-                  exit={{ height: 0, opacity: 0 }}
-                  transition={{ duration: 0.3, ease: 'easeInOut' }}
-                  className="overflow-hidden"
-                >
-                  <div className="flex flex-col gap-1 mt-1 ml-9">
-                    <button
-                      onClick={() => { setActiveView('protocolo-entrada'); setIsSidebarOpen(false); }}
-                      className={cn(
-                        "text-left py-2 px-2 text-sm font-medium transition-colors rounded-lg",
-                        activeView === 'protocolo-entrada' ? "text-white bg-white/10" : "text-slate-300 hover:text-white"
+              <AnimatePresence>
+                {(isProtocolOpen || activeView.startsWith('protocolo')) && (
+                  <motion.div
+                    initial={{ height: 0, opacity: 0 }}
+                    animate={{ height: 'auto', opacity: 1 }}
+                    exit={{ height: 0, opacity: 0 }}
+                    transition={{ duration: 0.3, ease: 'easeInOut' }}
+                    className="overflow-hidden"
+                  >
+                    <div className="flex flex-col gap-1 mt-1 ml-9">
+                      {hasPermission('protocolo-entrada') && (
+                        <button
+                          onClick={() => { setActiveView('protocolo-entrada'); setIsSidebarOpen(false); }}
+                          className={cn(
+                            "text-left py-2 px-2 text-sm font-medium transition-colors rounded-lg",
+                            activeView === 'protocolo-entrada' ? "text-white bg-white/10" : "text-slate-300 hover:text-white"
+                          )}
+                        >
+                          Protocolos de Entrada
+                        </button>
                       )}
-                    >
-                      Protocolos de Entrada
-                    </button>
-                    <button
-                      onClick={() => { setActiveView('protocolo-saida'); setIsSidebarOpen(false); }}
-                      className={cn(
-                        "text-left py-2 px-2 text-sm font-medium transition-colors rounded-lg",
-                        activeView === 'protocolo-saida' ? "text-white bg-white/10" : "text-slate-300 hover:text-white"
+                      {hasPermission('protocolo-saida') && (
+                        <button
+                          onClick={() => { setActiveView('protocolo-saida'); setIsSidebarOpen(false); }}
+                          className={cn(
+                            "text-left py-2 px-2 text-sm font-medium transition-colors rounded-lg",
+                            activeView === 'protocolo-saida' ? "text-white bg-white/10" : "text-slate-300 hover:text-white"
+                          )}
+                        >
+                          Protocolos de Saída
+                        </button>
                       )}
-                    >
-                      Protocolos de Saída
-                    </button>
-                    <button
-                      onClick={() => { setActiveView('protocolo-processos'); setIsSidebarOpen(false); }}
-                      className={cn(
-                        "text-left py-2 px-2 text-sm font-medium transition-colors rounded-lg",
-                        activeView === 'protocolo-processos' ? "text-white bg-white/10" : "text-slate-300 hover:text-white"
+                      {hasPermission('protocolo-processos') && (
+                        <button
+                          onClick={() => { setActiveView('protocolo-processos'); setIsSidebarOpen(false); }}
+                          className={cn(
+                            "text-left py-2 px-2 text-sm font-medium transition-colors rounded-lg",
+                            activeView === 'protocolo-processos' ? "text-white bg-white/10" : "text-slate-300 hover:text-white"
+                          )}
+                        >
+                          Processos
+                        </button>
                       )}
-                    >
-                      Processos
-                    </button>
-                    <button
-                      onClick={() => { setActiveView('protocolo-tramitacao'); setIsSidebarOpen(false); }}
-                      className={cn(
-                        "text-left py-2 px-2 text-sm font-medium transition-colors rounded-lg",
-                        activeView === 'protocolo-tramitacao' ? "text-white bg-white/10" : "text-slate-300 hover:text-white"
+                      {hasPermission('protocolo-tramitacao') && (
+                        <button
+                          onClick={() => { setActiveView('protocolo-tramitacao'); setIsSidebarOpen(false); }}
+                          className={cn(
+                            "text-left py-2 px-2 text-sm font-medium transition-colors rounded-lg",
+                            activeView === 'protocolo-tramitacao' ? "text-white bg-white/10" : "text-slate-300 hover:text-white"
+                          )}
+                        >
+                          Tramitação
+                        </button>
                       )}
-                    >
-                      Tramitação
-                    </button>
-                    <button
-                      onClick={() => { setActiveView('protocolo-pendencias'); setIsSidebarOpen(false); }}
-                      className={cn(
-                        "text-left py-2 px-2 text-sm font-medium transition-colors rounded-lg",
-                        activeView === 'protocolo-pendencias' ? "text-white bg-white/10" : "text-slate-300 hover:text-white"
+                      {hasPermission('protocolo-pendencias') && (
+                        <button
+                          onClick={() => { setActiveView('protocolo-pendencias'); setIsSidebarOpen(false); }}
+                          className={cn(
+                            "text-left py-2 px-2 text-sm font-medium transition-colors rounded-lg",
+                            activeView === 'protocolo-pendencias' ? "text-white bg-white/10" : "text-slate-300 hover:text-white"
+                          )}
+                        >
+                          Pendências
+                        </button>
                       )}
-                    >
-                      Pendências
-                    </button>
-                    <button
-                      onClick={() => { setActiveView('protocolo-arquivos'); setIsSidebarOpen(false); }}
-                      className={cn(
-                        "text-left py-2 px-2 text-sm font-medium transition-colors rounded-lg",
-                        activeView === 'protocolo-arquivos' ? "text-white bg-white/10" : "text-slate-300 hover:text-white"
+                      {hasPermission('protocolo-arquivos') && (
+                        <button
+                          onClick={() => { setActiveView('protocolo-arquivos'); setIsSidebarOpen(false); }}
+                          className={cn(
+                            "text-left py-2 px-2 text-sm font-medium transition-colors rounded-lg",
+                            activeView === 'protocolo-arquivos' ? "text-white bg-white/10" : "text-slate-300 hover:text-white"
+                          )}
+                        >
+                          Arquivo
+                        </button>
                       )}
-                    >
-                      Arquivo
-                    </button>
-                  </div>
-                </motion.div>
-              )}
-            </AnimatePresence>
-          </div>
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </div>
+          )}
 
           <div className="mt-4 mb-1 px-4 text-[10px] font-black text-slate-500 uppercase tracking-[0.2em]">
             Suporte
           </div>
-          <SidebarItem 
-            icon={BookOpen} 
-            label="Manual de Uso" 
-            active={activeView === 'manual'} 
-            onClick={() => { setActiveView('manual'); setIsSidebarOpen(false); }} 
-          />
+          {hasPermission('manual') && (
+            <SidebarItem 
+              icon={BookOpen} 
+              label="Manual de Uso" 
+              active={activeView === 'manual'} 
+              onClick={() => { setActiveView('manual'); setIsSidebarOpen(false); }} 
+            />
+          )}
 
           {hasPermission('configuracoes') && (
             <SidebarItem 

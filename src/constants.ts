@@ -240,10 +240,10 @@ export const initialChecklistRecords: ChecklistItem[] = [
 ];
 
 export const initialUsers: User[] = [
-  { id: '1', prefeituraId: '1', name: 'Igor Tráfego Pago', username: 'igor', password: '123', email: 'trafegopagoigor@gmail.com', role: 'superadmin', department: 'Administração', status: 'ativo', lastLogin: '2026-03-31 10:30' },
-  { id: '2', prefeituraId: '1', name: 'João Silva', username: 'joao', password: '123', email: 'joao.silva@prefeitura.gov.br', role: 'gestor', department: 'Finanças', status: 'ativo', lastLogin: '2026-03-31 09:15' },
-  { id: '3', prefeituraId: '1', name: 'Maria Santos', username: 'maria', password: '123', email: 'maria.santos@prefeitura.gov.br', role: 'visualizador', department: 'Transportes', status: 'ativo', lastLogin: '2026-03-30 16:45' },
-  { id: '4', prefeituraId: '1', name: 'Ricardo Oliveira', username: 'ricardo', password: '123', email: 'ricardo.oliveira@prefeitura.gov.br', role: 'visualizador', department: 'Obras', status: 'inativo', lastLogin: '2026-03-25 11:20' },
+  { id: '1', prefeituraId: '1', name: 'Igor Tráfego Pago', username: 'igor', password: '123', email: 'trafegopagoigor@gmail.com', role: 'superadmin', department: 'Administração', status: 'ativo', lastLogin: '2026-03-31 10:30', permissions: ['dashboard', 'combustivel', 'diarias', 'checklists', 'contratos', 'notas_fiscais', 'usuarios', 'relatorios', 'relatorio_executivo', 'manual', 'configuracoes'] },
+  { id: '2', prefeituraId: '1', name: 'João Silva', username: 'joao', password: '123', email: 'joao.silva@prefeitura.gov.br', role: 'gestor', department: 'Finanças', status: 'ativo', lastLogin: '2026-03-31 09:15', permissions: ['dashboard', 'combustivel', 'diarias', 'checklists', 'contratos', 'notas_fiscais', 'relatorios', 'manual'] },
+  { id: '3', prefeituraId: '1', name: 'Maria Santos', username: 'maria', password: '123', email: 'maria.santos@prefeitura.gov.br', role: 'compras', department: 'Transportes', status: 'ativo', lastLogin: '2026-03-30 16:45', permissions: ['notas_fiscais'] },
+  { id: '4', prefeituraId: '1', name: 'Ricardo Oliveira', username: 'ricardo', password: '123', email: 'ricardo.oliveira@prefeitura.gov.br', role: 'compras', department: 'Obras', status: 'inativo', lastLogin: '2026-03-25 11:20', permissions: ['notas_fiscais'] },
 ];
 
 export const DEFAULT_CHECKLIST_DOCUMENTS = [

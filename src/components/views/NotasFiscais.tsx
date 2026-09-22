@@ -17,6 +17,8 @@ import {
   Trash2
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
 import { supabase } from '../../lib/supabase';
 import { cn } from '../../lib/utils';
 import { NotaFiscal, User as UserType, Contract } from '../../types';
@@ -180,9 +182,78 @@ export default function NotasFiscais({ currentUser, addNotification }: NotasFisc
   };
 
   const generateReport = () => {
-    const now = new Date();
-    const formattedDate = format(now, "dd/MM/yyyy 'às' HH:mm", { locale: ptBR });
-    alert(`Relatório Gerado!\n\nResponsável: ${currentUser?.name}\nData: ${formattedDate}`);
+    try {
+      const doc = new jsPDF();
+      const now = new Date();
+      const formattedDate = format(now, "dd/MM/yyyy HH:mm", { locale: ptBR });
+
+      // Configuração de Título
+      doc.setFontSize(20);
+      doc.setTextColor(0, 0, 0);
+      doc.text('Relatório de Notas Fiscais', 14, 22);
+      
+      // Metadados
+      doc.setFontSize(10);
+      doc.setTextColor(100);
+      doc.text(`Responsável: ${currentUser?.name || 'Sistema'}`, 14, 30);
+      doc.text(`Data de Geração: ${formattedDate}`, 14, 35);
+      doc.text(`Total de Registros: ${notas.length}`, 14, 40);
+
+      // Preparação dos Dados
+      const tableData = notas.map(nota => [
+        nota.numero_nota,
+        nota.fornecedor,
+        new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(Number(nota.valor)),
+        nota.data_emissao ? format(parseISO(nota.data_emissao), 'dd/MM/yyyy') : '-',
+        nota.status === 'recebido' ? 'Recebido' : 'Pendente',
+        nota.enviado_por || '-',
+        nota.recebido_por || '-'
+      ]);
+
+      // Geração da Tabela
+      autoTable(doc, {
+        startY: 50,
+        head: [['Número', 'Fornecedor', 'Valor', 'Emissão', 'Status', 'Enviado Por', 'Recebido Por']],
+        body: tableData,
+        theme: 'striped',
+        headStyles: { fillColor: [79, 70, 229], textColor: [255, 255, 255], fontStyle: 'bold' },
+        styles: { fontSize: 8, cellPadding: 3 },
+        columnStyles: {
+          0: { cellWidth: 25 },
+          1: { cellWidth: 'auto' },
+          2: { cellWidth: 30, halign: 'right' },
+          3: { cellWidth: 25 },
+          4: { cellWidth: 20 },
+          5: { cellWidth: 25 },
+          6: { cellWidth: 25 }
+        }
+      });
+
+      // Rodapé
+      const pageCount = (doc as any).internal.getNumberOfPages();
+      for (let i = 1; i <= pageCount; i++) {
+        doc.setPage(i);
+        doc.setFontSize(8);
+        doc.setTextColor(150);
+        doc.text(
+          `Página ${i} de ${pageCount}`,
+          doc.internal.pageSize.getWidth() / 2,
+          doc.internal.pageSize.getHeight() - 10,
+          { align: 'center' }
+        );
+      }
+
+      doc.save(`Relatorio_NotasFiscais_${format(now, 'yyyyMMdd_HHmm')}.pdf`);
+      
+      if (addNotification) {
+        addNotification("Sucesso", "Relatório PDF gerado com sucesso!", "success");
+      }
+    } catch (error) {
+      console.error('Erro ao gerar PDF:', error);
+      if (addNotification) {
+        addNotification("Erro", "Falha ao gerar o arquivo PDF.", "error");
+      }
+    }
   };
 
   return (
@@ -205,15 +276,14 @@ export default function NotasFiscais({ currentUser, addNotification }: NotasFisc
             <RefreshCw size={18} className={cn(loading && "animate-spin")} />
             {loading ? "Carregando..." : "Atualizar"}
           </button>
-          {canReceive && (
-            <button
-              onClick={generateReport}
-              className="flex items-center justify-center gap-2 px-6 py-3 bg-accent hover:bg-accent-hover text-white rounded-2xl font-black transition-all shadow-lg shadow-accent/20 active:scale-95 shrink-0"
-            >
-              <PenTool size={18} />
-              Relatório
-            </button>
-          )}
+          
+          <button
+            onClick={generateReport}
+            className="flex items-center justify-center gap-2 px-6 py-3 bg-accent hover:bg-accent-hover text-white rounded-2xl font-black transition-all shadow-lg shadow-accent/20 active:scale-95 shrink-0"
+          >
+            <PenTool size={18} />
+            Relatório
+          </button>
         </div>
 
         <div className="flex items-center p-1 bg-surface border border-border/40 rounded-2xl w-fit">
@@ -233,7 +303,7 @@ export default function NotasFiscais({ currentUser, addNotification }: NotasFisc
               Receber
             </button>
           )}
-          {canReceive && (
+          {currentUser?.role !== 'compras' && (
             <button
               onClick={() => setActiveTab('recebidas')}
               className={cn("flex items-center gap-2 px-6 py-2.5 rounded-xl font-black text-sm transition-all", activeTab === 'recebidas' ? "bg-primary text-white shadow-md shadow-primary/20" : "text-text-secondary hover:text-text-primary")}
@@ -378,7 +448,7 @@ export default function NotasFiscais({ currentUser, addNotification }: NotasFisc
             </motion.div>
           )}
 
-          {activeTab === 'recebidas' && canReceive && (
+          {activeTab === 'recebidas' && (
             <motion.div key="recebidas" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }}>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                 {notas.filter(n => n.status === 'recebido').length === 0 ? (
@@ -392,14 +462,16 @@ export default function NotasFiscais({ currentUser, addNotification }: NotasFisc
                         </div>
                         <div className="flex items-center gap-2">
                           <span className="text-[10px] font-black bg-emerald-500/10 text-emerald-500 px-3 py-1 rounded-full">RECEBIDO</span>
-                          <button
-                            onClick={() => handleDelete(nota.id, nota.numero_nota)}
-                            disabled={deletingId === nota.id}
-                            className="w-8 h-8 flex items-center justify-center bg-rose-500/10 text-rose-500 rounded-xl hover:bg-rose-500/20 transition-all"
-                            title="Excluir nota"
-                          >
-                            {deletingId === nota.id ? <div className="w-4 h-4 border-2 border-rose-500/30 border-t-rose-500 rounded-full animate-spin" /> : <Trash2 size={14} />}
-                          </button>
+                          {canReceive && (
+                            <button
+                              onClick={() => handleDelete(nota.id, nota.numero_nota)}
+                              disabled={deletingId === nota.id}
+                              className="w-8 h-8 flex items-center justify-center bg-rose-500/10 text-rose-500 rounded-xl hover:bg-rose-500/20 transition-all"
+                              title="Excluir nota"
+                            >
+                              {deletingId === nota.id ? <div className="w-4 h-4 border-2 border-rose-500/30 border-t-rose-500 rounded-full animate-spin" /> : <Trash2 size={14} />}
+                            </button>
+                          )}
                         </div>
                       </div>
 

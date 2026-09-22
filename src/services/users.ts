@@ -78,10 +78,10 @@ export const handleSaveUser = async (
       username: '',
       password: '',
       email: '',
-      role: 'visualizador',
+      role: 'compras',
       department: '',
       status: 'ativo',
-      permissions: []
+      permissions: ['notas_fiscais']
     });
     addNotification("Sucesso", "Usuário salvo com sucesso!", "success");
   } catch (error: any) {
@@ -133,10 +133,10 @@ export const handleSaveUser = async (
           username: '',
           password: '',
           email: '',
-          role: 'visualizador',
+          role: 'compras',
           department: '',
           status: 'ativo',
-          permissions: []
+          permissions: ['notas_fiscais']
         });
         addNotification("Sucesso", "Usuário e permissões salvos (Usando fallback de schema).", "success");
         return;

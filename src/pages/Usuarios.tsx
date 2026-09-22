@@ -70,9 +70,10 @@ const Usuarios = ({
       username: '',
       password: '',
       email: '',
-      role: 'visualizador',
+      role: 'compras',
       department: '',
-      status: 'ativo'
+      status: 'ativo',
+      permissions: ['notas_fiscais']
     });
     setShowNewUserModal(true);
   };
