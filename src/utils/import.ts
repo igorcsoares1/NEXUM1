@@ -119,7 +119,7 @@ export const handleImportFile = async (
               }
             },
             temperature: 0.1,
-          }, "gemini-1.5-flash");
+          }, "gemini-2.0-flash");
 
           return safeJsonParse(text);
         } catch (error: any) {
@@ -230,28 +230,35 @@ export const handleImportFuel = async (
     const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
     const processBatch = async (batchData: any, batchInfo: string, retries = 5): Promise<any[]> => {
-      const prompt = `Extraia os dados de abastecimentos de combustível deste lote de dados (${batchInfo}).
-      A planilha pode conter colunas como: VEÍCULOS/FABRICANTE, ANO/MODELO, OFICIAL, RENAVAM, PLACAS, COMBUSTÍVEL, QUANT. LT DIÁRIO, KM/LT, KM DEZENA, V. UNIT., V. TOTAL.
-      
-      Retorne EXCLUSIVAMENTE um array JSON de objetos com a seguinte estrutura:
-      [{
-        "vehicle": "Veículo ou Fabricante",
-        "driver": "Nome do motorista",
-        "date": "Data do abastecimento (YYYY-MM-DD)",
-        "quantity": "Quantidade em litros diário (ex: 50 L)",
-        "cost": "Valor total (ex: R$ 250,00)",
-        "status": "concluido, pendente ou atencao",
-        "yearModel": "Ano/Modelo",
-        "official": "Sim/Não",
-        "renavam": "RENAVAM",
-        "plate": "Placa",
-        "fuelType": "Tipo de combustível",
-        "kmPerLiter": "KM por litro",
-        "kmReading": "KM Dezena / Leitura de KM",
-        "unitPrice": "Valor unitário"
-      }]
-      Tente mapear as colunas da melhor forma possível para o esquema.
-      NÃO TRUNQUE A LISTA. SEJA PRECISO.`;
+      const today = new Date().toISOString().split('T')[0];
+      const prompt = `Extraia os dados de abastecimentos de combustível desta planilha da Prefeitura Municipal (${batchInfo}).
+
+A planilha tem colunas: VEICULO, TOTAL LITROS, R$/LITRO, COMBUSTIVEL, R$ TOTAL.
+Pode ter DOIS BLOCOS lado a lado com as mesmas colunas (quinzena 1 e quinzena 2) — extraia TODOS os registros de AMBOS os blocos.
+O campo VEICULO contém nome do veículo e placa entre parênteses, ex: "L200 (PKB-2042)".
+
+IGNORE: linhas com "VALOR TOTAL", linhas completamente vazias e linhas de rodapé.
+
+Para cada veículo válido, crie um objeto JSON:
+{
+  "vehicle": "nome completo com placa exatamente como está",
+  "driver": "",
+  "date": "${today}",
+  "quantity": "total litros + L, ex: 780 L",
+  "cost": "R$ TOTAL formatado, ex: R$ 5.374,20",
+  "status": "concluido",
+  "fuelType": "DIESEL ou GASOLINA",
+  "unitPrice": "R$/LITRO formatado, ex: R$ 6,89",
+  "plate": "somente a placa, ex: PKB-2042",
+  "yearModel": "",
+  "official": "",
+  "renavam": "",
+  "kmPerLiter": "",
+  "kmReading": ""
+}
+
+Retorne EXCLUSIVAMENTE um array JSON válido sem texto adicional, markdown ou explicações.
+NÃO TRUNQUE A LISTA — inclua TODOS os veículos encontrados.`;
 
       const contents = [
         {
@@ -267,7 +274,7 @@ export const handleImportFuel = async (
         const text = await callAIProxy(contents, {
           responseMimeType: "application/json",
           temperature: 0.1,
-        }, "gemini-1.5-flash");
+        }, "gemini-2.0-flash");
 
         return safeJsonParse(text);
       } catch (error: any) {
@@ -469,7 +476,7 @@ async function extractAndSave(
       Texto:
       ${rawData.substring(0, 15000)}
     `;
-      const text = await callAIProxy([{ role: 'user', parts: [{ text: promptText }] }], { responseMimeType: "application/json" }, "gemini-1.5-flash");
+      const text = await callAIProxy([{ role: 'user', parts: [{ text: promptText }] }], { responseMimeType: "application/json" }, "gemini-2.0-flash");
       allExtractedData = safeJsonParse(text);
 
     } else if (file.type === 'application/pdf' || fileName.endsWith('.pdf')) {
@@ -503,7 +510,7 @@ async function extractAndSave(
           { inlineData: { mimeType: "application/pdf", data: chunk.base64 } }
         ];
         
-        const text = await callAIProxy([{ role: 'user', parts }], { responseMimeType: "application/json" }, "gemini-1.5-flash");
+        const text = await callAIProxy([{ role: 'user', parts }], { responseMimeType: "application/json" }, "gemini-2.0-flash");
         
         const extractedChunkData = safeJsonParse(text);
         allExtractedData = [...allExtractedData, ...extractedChunkData];

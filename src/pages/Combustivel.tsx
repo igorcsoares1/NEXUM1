@@ -88,6 +88,9 @@ const Combustivel = ({
   handleEditFuel,
   handleDeleteFuel
 }: CombustivelProps) => {
+  // FIX: Ref para o input de arquivo
+  const fileInputRef = React.useRef<HTMLInputElement>(null);
+  
   const totalLiters = filteredFuelRecords.reduce((acc, r) => acc + (parseFloat(r.quantity?.toString() || '0')), 0);
   const totalCost = filteredFuelRecords.reduce((acc, r) => acc + parseCurrencyToNumber(r.cost), 0);
 
@@ -358,20 +361,29 @@ const Combustivel = ({
                 Excluir ({selectedFuelIds.length})
               </button>
             )}
-            <label className={cn(
-              "flex-1 sm:flex-none px-4 py-2.5 rounded-xl font-bold flex items-center justify-center gap-2 cursor-pointer text-sm btn-surface",
-              isImporting && "opacity-50 cursor-not-allowed"
-            )}>
+            <button
+              onClick={() => {
+                if (!isImporting && fileInputRef.current) {
+                  fileInputRef.current.click();
+                }
+              }}
+              disabled={isImporting}
+              className={cn(
+                "flex-1 sm:flex-none px-4 py-2.5 rounded-xl font-bold flex items-center justify-center gap-2 text-sm btn-surface transition-all",
+                isImporting ? "opacity-50 cursor-not-allowed" : "cursor-pointer hover:bg-surface-hover active:scale-95"
+              )}
+              title={isImporting ? "Importação em andamento..." : "Importar arquivo CSV ou Excel"}
+            >
               {isImporting ? <RefreshCw size={18} className="animate-spin" /> : <FileText size={18} />}
               {isImporting ? "Processando..." : "Importar Planilha"}
               <input
+                ref={fileInputRef}
                 type="file"
                 accept=".csv,.xlsx,.xls"
                 className="hidden"
                 onChange={handleImportFuel}
-                disabled={isImporting}
               />
-            </label>
+            </button>
             <button
               onClick={handleExportCSV}
               className="flex-1 sm:flex-none px-4 py-2.5 rounded-xl font-bold flex items-center justify-center gap-2 text-sm btn-surface"
