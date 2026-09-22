@@ -50,7 +50,7 @@ export const runSmartHealthCheck = async (
 
     const text = await callAIProxy([{ role: 'user', parts: [{ text: prompt }] }], {
       responseMimeType: "application/json"
-    }, "gemini-1.5-flash"); // Switching to a more standard model name just in case
+    }, "gemini-3.8-flash"); // Switching to a more standard model name just in case
     
     try {
       return JSON.parse(text || "{}");

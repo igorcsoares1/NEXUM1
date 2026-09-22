@@ -5,9 +5,10 @@
 ALTER TABLE checklists 
 ADD COLUMN IF NOT EXISTS history jsonb DEFAULT '[]'::jsonb;
 
--- 2. Garante que a coluna 'invoiceValue' (Valor da Nota) exista para o cálculo de consumo
+-- 2. Garante que colunas de nota fiscal existam para o cálculo de consumo
 ALTER TABLE checklists 
-ADD COLUMN IF NOT EXISTS "invoiceValue" text;
+ADD COLUMN IF NOT EXISTS "invoiceValue" text,
+ADD COLUMN IF NOT EXISTS "invoiceNumber" text;
 
 -- 3. Adiciona a coluna 'currentSector' (Setor Atual) para o Histórico de Tramitação
 ALTER TABLE checklists 

@@ -90,9 +90,20 @@ const Combustivel = ({
 }: CombustivelProps) => {
   // FIX: Ref para o input de arquivo
   const fileInputRef = React.useRef<HTMLInputElement>(null);
+  const months = ['janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho', 'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro'];
   
   const totalLiters = filteredFuelRecords.reduce((acc, r) => acc + (parseFloat(r.quantity?.toString() || '0')), 0);
   const totalCost = filteredFuelRecords.reduce((acc, r) => acc + parseCurrencyToNumber(r.cost), 0);
+
+  const vehicleSummary = filteredFuelRecords.reduce((acc, record) => {
+    const vehicle = record.vehicle || 'Sem Veículo';
+    if (!acc[vehicle]) {
+      acc[vehicle] = { liters: 0, cost: 0 };
+    }
+    acc[vehicle].liters += parseFloat(record.quantity?.toString() || '0');
+    acc[vehicle].cost += parseCurrencyToNumber(record.cost);
+    return acc;
+  }, {} as Record<string, { liters: number; cost: number }>);
 
   const getStatusConfig = (status: string) => {
     switch (status?.toLowerCase()) {
@@ -410,6 +421,30 @@ const Combustivel = ({
           <StatCard title="Média Ponderada" value="12.4 km/L" icon={<TrendingUp size={24} />} />
         </div>
 
+        <div className='glass-card p-6 mb-6'>
+          <h3 className='text-lg font-bold text-text-primary mb-4'>Resumo por Veículo</h3>
+          <div className='overflow-x-auto'>
+            <table className='w-full text-sm'>
+              <thead>
+                <tr className='border-b border-border'>
+                  <th className='text-left py-2 font-bold'>Veículo</th>
+                  <th className='text-right py-2 font-bold'>Litros</th>
+                  <th className='text-right py-2 font-bold'>Valor Total</th>
+                </tr>
+              </thead>
+              <tbody>
+                {Object.entries(vehicleSummary).map(([vehicle, data]) => (
+                  <tr key={vehicle} className='border-b border-border/30 hover:bg-surface-hover'>
+                    <td className='py-3'>{vehicle}</td>
+                    <td className='text-right py-3 font-bold'>{data.liters.toFixed(1)} L</td>
+                    <td className='text-right py-3 font-bold text-primary'>R$ {data.cost.toLocaleString('pt-BR', {minimumFractionDigits: 2})}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
         <div className="glass-card overflow-hidden">
           <div className="flex flex-col gap-4 mb-6">
             <div className="flex items-center gap-4">
@@ -455,10 +490,21 @@ const Combustivel = ({
                         onChange={(e) => setFuelFilters({ ...fuelFilters, date: e.target.value })}
                       />
                     </div>
+                    <div className="flex flex-col gap-1.5">
+                      <label className="text-[10px] font-bold text-text-secondary uppercase tracking-wider">Mês do Abastecimento</label>
+                      <select
+                        value={fuelFilters.month || ''}
+                        onChange={(e) => setFuelFilters({ ...fuelFilters, month: e.target.value })}
+                        className='bg-surface border border-border rounded-lg px-3 py-2 text-sm outline-none focus:border-primary'
+                      >
+                        <option value=''>Todos os meses</option>
+                        {months.map(m => <option key={m} value={m}>{m}</option>)}
+                      </select>
+                    </div>
                     {/* Mais filtros aqui se necessário */}
                     <div className="md:col-span-3 flex justify-end">
                       <button
-                        onClick={() => setFuelFilters({ search: '', date: '', minQuantity: '', maxQuantity: '', minCost: '', maxCost: '' })}
+                        onClick={() => setFuelFilters({ search: '', date: '', month: '', minQuantity: '', maxQuantity: '', minCost: '', maxCost: '' })}
                         className="text-xs font-bold text-rose-500 hover:text-rose-600 transition-colors"
                       >
                         Limpar Filtros

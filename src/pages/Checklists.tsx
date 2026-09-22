@@ -19,6 +19,7 @@ import { cn } from '../lib/utils';
 import { ChecklistItem } from '../types';
 import { PaginationControls } from '../components/ui/PaginationControls';
 import { RecibosDigitaisComponent } from '../components/RecibosDigitaisComponent';
+import { DEFAULT_CHECKLIST_ITEMS } from '../services/checklists';
 
 interface ChecklistsProps {
   checklistRecords: ChecklistItem[];
@@ -474,7 +475,7 @@ const Checklists = ({
               const nextProcess = getNextProcessNumber();
               setEditingChecklist(null);
               setNewChecklistData({
-                prefeituraId: '1',
+                prefeituraId: currentUser.prefeituraId || '1',
                 processNumber: nextProcess,
                 contractNumber: '',
                 vendor: '',
@@ -484,16 +485,7 @@ const Checklists = ({
                 invoiceNumber: '',
                 submissionDate: new Date().toISOString().split('T')[0],
                 status: 'em_analise',
-                items: [
-                  { id: crypto.randomUUID(), label: 'CERTIDÃO NEGATIVA DE DEBITOS TRABALHISTAS', checked: false },
-                  { id: crypto.randomUUID(), label: 'CERTIDÃO NEGATIVA DE REGULARIDADE (FGTS)', checked: false },
-                  { id: crypto.randomUUID(), label: 'CERTIDÃO NEGATIVA DE DÉBITOS FEDERAIS', checked: false },
-                  { id: crypto.randomUUID(), label: 'CERTIDÃO NEGATIVA DE DÉBITOS ESTADUAIS', checked: false },
-                  { id: crypto.randomUUID(), label: 'CERTIDÃO NEGATIVA DE DÉBITOS MUNICIPAIS', checked: false },
-                  { id: crypto.randomUUID(), label: 'PLANILHA DE COMPOSIÇÃO DE CUSTOS', checked: false },
-                  { id: crypto.randomUUID(), label: 'RELATÓRIO DE ATIVIDADES', checked: false },
-                  { id: crypto.randomUUID(), label: 'CONTA BANCÁRIA DA EMPRESA', checked: false }
-                ]
+                items: DEFAULT_CHECKLIST_ITEMS.map(item => ({ ...item, id: crypto.randomUUID() }))
               });
               setShowNewChecklistModal(true);
             }}
@@ -532,7 +524,7 @@ const Checklists = ({
                   const nextProcess = getNextProcessNumber();
                   setEditingChecklist(null);
                   setNewChecklistData({
-                    prefeituraId: '1',
+                    prefeituraId: currentUser.prefeituraId || '1',
                     processNumber: nextProcess,
                     contractNumber: '',
                     vendor: '',
@@ -542,6 +534,7 @@ const Checklists = ({
                     invoiceNumber: '',
                     submissionDate: new Date().toISOString().split('T')[0],
                     status: 'em_analise',
+                    items: DEFAULT_CHECKLIST_ITEMS.map(item => ({ ...item, id: crypto.randomUUID() }))
                    });
                   setShowNewChecklistModal(true);
                 }}

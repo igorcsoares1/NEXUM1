@@ -128,6 +128,17 @@ export const handleAddTramitation = async (
   }
 };
 
+export const DEFAULT_CHECKLIST_ITEMS = [
+  { label: 'CERTIDÃO NEGATIVA DE DEBITOS TRABALHISTAS', checked: false },
+  { label: 'CERTIDÃO NEGATIVA DE REGULARIDADE (FGTS)', checked: false },
+  { label: 'CERTIDÃO NEGATIVA DE DÉBITOS FEDERAIS', checked: false },
+  { label: 'CERTIDÃO NEGATIVA DE DÉBITOS ESTADUAIS', checked: false },
+  { label: 'CERTIDÃO NEGATIVA DE DÉBITOS MUNICIPAIS', checked: false },
+  { label: 'PLANILHA DE COMPOSIÇÃO DE CUSTOS', checked: false },
+  { label: 'RELATÓRIO DE ATIVIDADES', checked: false },
+  { label: 'CONTA BANCÁRIA DA EMPRESA', checked: false }
+];
+
 export const handleSaveChecklist = async (
   newChecklistData: Omit<ChecklistItem, 'id'>,
   editingChecklist: ChecklistItem | null,
@@ -135,7 +146,8 @@ export const handleSaveChecklist = async (
   setShowNewChecklistModal: (val: boolean) => void,
   setEditingChecklist: (val: ChecklistItem | null) => void,
   setNewChecklistData: (val: Omit<ChecklistItem, 'id'>) => void,
-  addNotification: (title: string, message: string, type: any) => void
+  addNotification: (title: string, message: string, type: any) => void,
+  fetchChecklistRecords?: () => Promise<void>
 ) => {
   const allChecked = newChecklistData.items && newChecklistData.items.length > 0 && newChecklistData.items.every(item => item.checked);
   const calculatedStatus = allChecked ? 'concluido' : 'em_analise';
@@ -203,7 +215,7 @@ export const handleSaveChecklist = async (
 
     if (error) {
       console.warn("Erro ao salvar checklist, tentando modo resiliente...", error.message);
-      const possibleProblematicColumns = ['currentSector', 'history', 'invoiceValue'];
+      const possibleProblematicColumns = ['currentSector', 'history', 'invoiceValue', 'invoiceNumber'];
       let resilientData = { ...newRecordData };
       let currentError = error;
 
@@ -221,6 +233,10 @@ export const handleSaveChecklist = async (
 
     if (error) throw error;
     
+    if (fetchChecklistRecords) {
+      await fetchChecklistRecords();
+    }
+
     setShowNewChecklistModal(false);
     setEditingChecklist(null);
     setNewChecklistData({
@@ -234,16 +250,7 @@ export const handleSaveChecklist = async (
       invoiceNumber: '',
       submissionDate: new Date().toISOString().split('T')[0],
       status: 'em_analise',
-      items: [
-        { id: crypto.randomUUID(), label: 'CERTIDÃO NEGATIVA DE DEBITOS TRABALHISTAS', checked: false },
-        { id: crypto.randomUUID(), label: 'CERTIDÃO NEGATIVA DE REGULARIDADE (FGTS)', checked: false },
-        { id: crypto.randomUUID(), label: 'CERTIDÃO NEGATIVA DE DÉBITOS FEDERAIS', checked: false },
-        { id: crypto.randomUUID(), label: 'CERTIDÃO NEGATIVA DE DÉBITOS ESTADUAIS', checked: false },
-        { id: crypto.randomUUID(), label: 'CERTIDÃO NEGATIVA DE DÉBITOS MUNICIPAIS', checked: false },
-        { id: crypto.randomUUID(), label: 'PLANILHA DE COMPOSIÇÃO DE CUSTOS', checked: false },
-        { id: crypto.randomUUID(), label: 'RELATÓRIO DE ATIVIDADES', checked: false },
-        { id: crypto.randomUUID(), label: 'CONTA BANCÁRIA DA EMPRESA', checked: false }
-      ]
+      items: DEFAULT_CHECKLIST_ITEMS.map(item => ({ ...item, id: crypto.randomUUID() }))
     });
     addNotification("Sucesso", "Checklist salvo com sucesso!", "success");
   } catch (error) {

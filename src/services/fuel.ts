@@ -99,15 +99,18 @@ export const handleBulkDeleteFuel = async (
   addNotification: (title: string, message: string, type: any) => void
 ) => {
   try {
-    await Promise.all(selectedFuelIds.map(id => 
-      supabase.from('fuelRecords').delete().eq('id', id)
-    ));
+    const { error } = await supabase
+      .from('fuelRecords')
+      .delete()
+      .in('id', selectedFuelIds);
+
+    if (error) throw error;
 
     setSelectedFuelIds([]);
     setIsFuelSelectionMode(false);
-    addNotification("Sucesso", "Registros excluídos com sucesso.", "success");
-  } catch (error) {
+    addNotification("Sucesso", `${selectedFuelIds.length} registros excluídos com sucesso.`, "success");
+  } catch (error: any) {
     handleError(error, "excluir combustível em lote");
-    addNotification("Erro", "Erro ao excluir registros de combustível em lote.", "error");
+    addNotification("Erro", `Erro ao excluir registros: ${error.message || 'Verifique sua permissão'}`, "error");
   }
 };

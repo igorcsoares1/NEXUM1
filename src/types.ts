@@ -81,6 +81,8 @@ export interface FuelRecord {
   kmPerLiter?: string;
   kmReading?: string;
   unitPrice?: string;
+  sheet?: string;
+  month?: string;
 }
 
 export interface DailyRecord {

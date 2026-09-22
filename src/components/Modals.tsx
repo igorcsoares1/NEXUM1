@@ -851,10 +851,11 @@ export const Modals = ({
                 <button 
                   type="button"
                   onClick={handleSaveChecklist}
-                  className="flex-[2] py-3.5 px-4 sm:px-6 bg-primary text-white rounded-2xl font-black uppercase tracking-widest text-[10px] sm:text-xs shadow-xl shadow-primary/20 hover:bg-primary/90 transition-all active:scale-95 flex items-center justify-center gap-2"
+                  disabled={isSaving}
+                  className="flex-[2] py-3.5 px-4 sm:px-6 bg-primary text-white rounded-2xl font-black uppercase tracking-widest text-[10px] sm:text-xs shadow-xl shadow-primary/20 hover:bg-primary/90 transition-all active:scale-95 flex items-center justify-center gap-2 disabled:opacity-50"
                 >
-                  <Save size={16} />
-                  Salvar Processo
+                  {isSaving ? <RefreshCw className="animate-spin" size={16} /> : <Save size={16} />}
+                  {isSaving ? 'Salvando...' : 'Salvar Processo'}
                 </button>
               </div>
             </motion.div>

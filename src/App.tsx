@@ -168,7 +168,8 @@ export default function App() {
     fetchFuelRecords,
     fetchDailyRecords,
     fetchServidores,
-    fetchUsers
+    fetchUsers,
+    fetchChecklists
   } = useSupabase({ isAuthReady, currentUser, isLoggedIn });
 
   const {
@@ -211,6 +212,7 @@ export default function App() {
   const [selectedDailyIds, setSelectedDailyIds] = useState<string[]>([]);
   const [isDailySelectionMode, setIsDailySelectionMode] = useState(false);
   const [isSavingDaily, setIsSavingDaily] = useState(false);
+  const [isSavingChecklist, setIsSavingChecklist] = useState(false);
   const [selectedContractIds, setSelectedContractIds] = useState<string[]>([]);
   const [isContractSelectionMode, setIsContractSelectionMode] = useState(false);
   const [contractsPage, setContractsPage] = useState(1);
@@ -517,6 +519,7 @@ export default function App() {
   const [fuelFilters, setFuelFilters] = useState({
     search: '',
     date: '',
+    month: '',
     minQuantity: '',
     maxQuantity: '',
     minCost: '',
@@ -690,6 +693,7 @@ export default function App() {
       const matchesSearch = record.vehicle.toLowerCase().includes(fuelFilters.search.toLowerCase()) ||
         record.driver.toLowerCase().includes(fuelFilters.search.toLowerCase());
       const matchesDate = !fuelFilters.date || record.date === fuelFilters.date;
+      const matchesMonth = !fuelFilters.month || record.month?.toLowerCase() === fuelFilters.month.toLowerCase();
 
       const quantity = parseFloat((record.quantity || '0').replace(/[^\d.,]/g, '').replace(',', '.'));
       const matchesMinQty = !fuelFilters.minQuantity || quantity >= parseFloat(fuelFilters.minQuantity);
@@ -699,7 +703,7 @@ export default function App() {
       const matchesMinCost = !fuelFilters.minCost || cost >= parseFloat(fuelFilters.minCost);
       const matchesMaxCost = !fuelFilters.maxCost || cost <= parseFloat(fuelFilters.maxCost);
 
-      return matchesSearch && matchesDate && matchesMinQty && matchesMaxQty && matchesMinCost && matchesMaxCost;
+      return matchesSearch && matchesDate && matchesMonth && matchesMinQty && matchesMaxQty && matchesMinCost && matchesMaxCost;
     });
   }, [fuelRecords, fuelFilters]);
 
@@ -791,69 +795,78 @@ export default function App() {
   const handleImportFuelLocal = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-
     setIsImporting(true);
-
     try {
       const XLSX = await import('xlsx');
       const reader = new FileReader();
-      
       reader.onload = async (event) => {
         try {
           const data = event.target?.result;
           const workbook = XLSX.read(data, { type: 'binary' });
-          const worksheet = workbook.Sheets[workbook.SheetNames[0]];
-          const rows = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
+          
+          const monthInput = prompt('Qual mês? (ex: agosto, setembro, outubro)');
+          if (!monthInput) {
+            setIsImporting(false);
+            return;
+          }
 
           const records: any[] = [];
           const today = new Date().toISOString().split('T')[0];
 
-          for (let i = 1; i < rows.length; i++) {
-            const row = rows[i] as any[];
-            if (!row[0] || row[0].toString().toLowerCase().includes('total')) continue;
+          for (const sheetName of workbook.SheetNames) {
+            if (sheetName.toLowerCase().includes('total')) continue;
+            
+            const worksheet = workbook.Sheets[sheetName];
+            const rows = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
 
-            const vehicle = row[0]?.toString().trim();
-            const liters = row[1];
-            const unitPrice = row[2];
-            const fuelType = row[3]?.toString().trim() || 'DIESEL';
-            const totalCost = row[4];
+            for (let i = 1; i < rows.length; i++) {
+              const row = rows[i] as any[];
+              if (!row[0]) continue;
 
-            if (!vehicle || !liters || !unitPrice || !totalCost) continue;
+              const vehicle = String(row[0]).trim();
+              if (vehicle.toLowerCase().includes('total') || vehicle.length === 0) continue;
 
-            records.push({
-              vehicle: vehicle,
-              driver: '',
-              date: today,
-              quantity: parseFloat(liters).toFixed(1),
-              cost: totalCost,
-              status: 'concluido',
-              fuelType: fuelType.toUpperCase(),
-              unitPrice: parseFloat(unitPrice).toFixed(2),
-              plate: vehicle.match(/\(([A-Z0-9-]+)\)/) ? vehicle.match(/\(([A-Z0-9-]+)\)/)[1] : '',
-              prefeituraId: currentUser?.prefeituraId || '1',
-              yearModel: '',
-              official: '',
-              renavam: '',
-              kmPerLiter: '',
-              kmReading: ''
-            });
+              const liters = Number(row[1]) || 0;
+              const unitPrice = Number(row[2]) || 0;
+              const fuelType = String(row[3] || 'DIESEL').trim();
+              const totalCost = Number(row[4]) || 0;
+
+              if (liters === 0 || unitPrice === 0 || totalCost === 0) continue;
+
+              records.push({
+                vehicle: vehicle,
+                driver: '',
+                date: today,
+                quantity: liters,
+                cost: totalCost,
+                status: 'concluido',
+                fuelType: fuelType.toUpperCase(),
+                unitPrice: unitPrice,
+                plate: '',
+                prefeituraId: currentUser?.prefeituraId || '1',
+                month: monthInput.toLowerCase()
+              });
+            }
           }
 
           if (records.length === 0) throw new Error('Nenhum registro encontrado');
 
           const { error } = await supabase.from('fuelRecords').insert(records);
-          if (error) throw error;
+          if (error) {
+            console.error('Erro Supabase:', error);
+            throw error;
+          }
 
           await fetchFuelRecords();
           addNotification('Sucesso', records.length + ' registros importados!', 'success');
         } catch (err: any) {
+          console.error('Erro:', err);
           addNotification('Erro', err.message || 'Erro ao processar', 'error');
         } finally {
           setIsImporting(false);
           if (e.target) e.target.value = '';
         }
       };
-
       reader.readAsBinaryString(file);
     } catch (err: any) {
       setIsImporting(false);
@@ -998,22 +1011,30 @@ export default function App() {
     }
   };
 
-  const handleSaveChecklist = (e?: React.FormEvent) => {
+  const handleSaveChecklist = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
-    checklistService.handleSaveChecklist(
-      newChecklistData,
-      editingChecklist,
-      currentUser,
-      setShowNewChecklistModal,
-      setEditingChecklist,
-      setNewChecklistData,
-      addNotification
-    );
-    logActivity(
-      currentUser, 
-      editingChecklist ? 'Edição de Processo' : 'Novo Processo', 
-      `${editingChecklist ? 'Editou' : 'Criou'} processo nº ${newChecklistData.processNumber} para ${newChecklistData.vendor}`
-    );
+    setIsSavingChecklist(true);
+    try {
+      await checklistService.handleSaveChecklist(
+        newChecklistData,
+        editingChecklist,
+        currentUser,
+        setShowNewChecklistModal,
+        setEditingChecklist,
+        setNewChecklistData,
+        addNotification,
+        fetchChecklists
+      );
+      logActivity(
+        currentUser, 
+        editingChecklist ? 'Edição de Processo' : 'Novo Processo', 
+        `${editingChecklist ? 'Editou' : 'Criou'} processo nº ${newChecklistData.processNumber} para ${newChecklistData.vendor}`
+      );
+    } catch (error) {
+      console.error("Erro ao salvar checklist:", error);
+    } finally {
+      setIsSavingChecklist(false);
+    }
   };
 
   const handleToggleChecklistItem = (checklistId: string, itemId: string) => {
@@ -1294,6 +1315,7 @@ export default function App() {
           setIsFuelSelectionMode,
           addNotification
         );
+        fetchFuelRecords();
       } else if (deleteType === 'dailyBulk') {
         await dailyService.handleBulkDeleteDaily(
           selectedDailyIds,
@@ -1639,7 +1661,7 @@ export default function App() {
       newContractData={newContractData}
       setNewContractData={setNewContractData}
       handleSaveContract={handleSaveContract}
-      isSaving={isSavingDaily || isSavingSettings}
+      isSaving={isSavingDaily || isSavingSettings || isSavingChecklist}
       showNewFuelModal={showNewFuelModal}
       setShowNewFuelModal={setShowNewFuelModal}
       editingFuel={editingFuel}

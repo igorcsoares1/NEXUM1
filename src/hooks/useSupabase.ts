@@ -388,6 +388,11 @@ export function useSupabase({ isAuthReady, currentUser, isLoggedIn }: UseSupabas
         setServidores(normalized);
       }
     },
+    fetchChecklists: async () => {
+      if (!currentUser) return;
+      const { data, error } = await supabase.from('checklists').select('*').eq('prefeituraId', currentUser.prefeituraId);
+      if (!error) setChecklistRecords(data || []);
+    },
     fetchUsers: async () => {
       if (!currentUser) return;
       const isAdmin = currentUser.role === 'admin' || currentUser.role === 'superadmin';
