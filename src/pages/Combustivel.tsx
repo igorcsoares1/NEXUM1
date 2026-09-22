@@ -333,6 +333,17 @@ const Combustivel = ({
               <Printer size={18} />
               <span>Imprimir</span>
             </button>
+            <label className="flex-1 sm:flex-none px-4 py-2.5 rounded-xl font-bold flex items-center justify-center cursor-pointer text-sm btn-surface">
+              <FileText size={18} />
+              {isImporting ? 'Processando...' : 'Importar Planilha'}
+              <input
+                type="file"
+                accept=".xlsx,.xls,.csv"
+                className="hidden"
+                onChange={handleImportFuel}
+                disabled={isImporting}
+              />
+            </label>
             <button
               onClick={() => {
                 setIsFuelSelectionMode(!isFuelSelectionMode);
