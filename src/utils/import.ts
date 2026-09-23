@@ -6,6 +6,8 @@ import { supabase } from '../lib/supabase';
 import { User, Contract } from '../types';
 import { PDFDocument } from 'pdf-lib';
 import { callAIProxy } from '../lib/ai';
+import { parseCurrencyToNumber } from './format';
+import { updateContractConsumption } from '../services/checklists';
 
 const safeJsonParse = (text: string, fallback: any = []): any => {
   if (!text) return fallback;
@@ -119,7 +121,7 @@ export const handleImportFile = async (
               }
             },
             temperature: 0.1,
-          }, "gemini-2.0-flash");
+          }, "gemini-1.5-flash");
 
           return safeJsonParse(text);
         } catch (error: any) {
@@ -449,7 +451,7 @@ async function extractAndSave(
       Texto:
       ${rawData.substring(0, 15000)}
     `;
-      const text = await callAIProxy([{ role: 'user', parts: [{ text: promptText }] }], { responseMimeType: "application/json" }, "gemini-2.0-flash");
+      const text = await callAIProxy([{ role: 'user', parts: [{ text: promptText }] }], { responseMimeType: "application/json" }, "gemini-1.5-flash");
       allExtractedData = safeJsonParse(text);
 
     } else if (file.type === 'application/pdf' || fileName.endsWith('.pdf')) {
@@ -483,7 +485,7 @@ async function extractAndSave(
           { inlineData: { mimeType: "application/pdf", data: chunk.base64 } }
         ];
         
-        const text = await callAIProxy([{ role: 'user', parts }], { responseMimeType: "application/json" }, "gemini-2.0-flash");
+        const text = await callAIProxy([{ role: 'user', parts }], { responseMimeType: "application/json" }, "gemini-1.5-flash");
         
         const extractedChunkData = safeJsonParse(text);
         allExtractedData = [...allExtractedData, ...extractedChunkData];
@@ -504,15 +506,27 @@ async function extractAndSave(
       if (error) throw error;
       addNotification("Sucesso", `${allExtractedData.length} diárias importadas com sucesso!`, "success");
     } else {
-      const { error } = await supabase.from('checklistRecords').insert(
+      const { error } = await supabase.from('checklists').insert(
         allExtractedData.map((c: any) => ({
           ...c,
           prefeituraId: currentUser.prefeituraId || '1',
           createdAt: new Date().toISOString()
         }))
       );
+      
       if (error) throw error;
-      addNotification("Sucesso", `${allExtractedData.length} checklists importados com sucesso!`, "success");
+
+      // ✅ ABATER CONSUMO DOS CONTRATOS APÓS IMPORTAÇÃO
+      for (const item of allExtractedData) {
+        if (item.contractNumber && item.invoiceValue) {
+          const val = parseCurrencyToNumber(item.invoiceValue);
+          if (val > 0) {
+            await updateContractConsumption(item.contractNumber, val);
+          }
+        }
+      }
+
+      addNotification("Sucesso", `${allExtractedData.length} checklists importados e contratos atualizados! ✅`, "success");
     }
 
   } catch (error: any) {

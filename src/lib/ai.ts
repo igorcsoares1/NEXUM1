@@ -2,7 +2,7 @@
  * Client-side utility for calling the server-side AI proxy.
  * This avoids direct SDK usage in the browser, preventing CORS and CSP errors.
  */
-export const callAIProxy = async (contents: any[], config: any = {}, model: string = "gemini-3.8-flash", retries = 2): Promise<string> => {
+export const callAIProxy = async (contents: any[], config: any = {}, model: string = "gemini-1.5-flash", retries = 2): Promise<string> => {
   try {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 600000); // 10 minute timeout for server retries

@@ -38,7 +38,7 @@ import { cn } from '../lib/utils';
 import { Contract, FuelRecord, DailyRecord, ChecklistItem, User, SystemSettings, Servidor, ChecklistConfirmation } from '../types';
 import { DEFAULT_CHECKLIST_DOCUMENTS } from '../constants';
 import { generateChecklistPDF, generateChecklistsReportPDF } from '../utils/pdf';
-import { fetchChecklistConfirmations } from '../services/checklists';
+import { fetchChecklistConfirmations, deleteChecklistConfirmation } from '../services/checklists';
 import { PrintHeader } from './ui/PrintHeader';
 import { processCurrencyInput, parseCurrencyToNumber, formatCurrency } from '../utils/format';
 
@@ -90,6 +90,7 @@ interface ModalsProps {
   selectedChecklistIds: string[];
   setSelectedChecklistIds: (ids: string[]) => void;
   checklistRecords: ChecklistItem[];
+  contracts: Contract[];
   showDailyChecklistReport: boolean;
   setShowDailyChecklistReport: (show: boolean) => void;
   systemSettings: SystemSettings | null;
@@ -109,7 +110,6 @@ interface ModalsProps {
   setNewItemLabel: (label: string) => void;
   handleAddItem: () => void;
   handleRemoveItem: (id: string) => void;
-  contracts: Contract[];
   servidores: Servidor[];
   canDelete?: boolean;
   handleDeleteDaily?: (id: string) => void;
@@ -194,6 +194,15 @@ export const Modals = ({
       console.error("Erro ao registrar etapa:", err);
     } finally {
       setIsSavingTramitation(false);
+    }
+  };
+
+  const handleDeleteConf = async (id: string) => {
+    if (!window.confirm('Tem certeza que deseja excluir esta confirmação?')) return;
+    
+    const success = await deleteChecklistConfirmation(id);
+    if (success) {
+      setConfirmations(prev => prev.filter(c => c.id !== id));
     }
   };
 
@@ -395,6 +404,74 @@ export const Modals = ({
                 <button onClick={() => setShowNewContractModal(false)} className="p-2 hover:bg-surface-hover rounded-xl text-text-secondary"><X size={20} /></button>
               </div>
               <form onSubmit={handleSaveContract} className="flex-1 overflow-y-auto p-6 space-y-6 flex flex-col no-scrollbar">
+                {editingContract && parseCurrencyToNumber(newContractData.totalValue) > 0 && (() => {
+                  const total = parseCurrencyToNumber(newContractData.totalValue);
+                  const consumed = parseCurrencyToNumber(newContractData.consumption);
+                  const percentage = total > 0 ? (consumed / total) * 100 : 0;
+                  const balance = total - consumed;
+                  const isNearZero = percentage >= 90;
+
+                  return (
+                    <div className="bg-surface-hover/30 rounded-[28px] p-6 border border-border/50 animate-in fade-in slide-in-from-top-4 duration-500">
+                      <div className="flex justify-between items-start mb-4">
+                        <div>
+                          <h4 className="text-xs font-black text-text-secondary uppercase tracking-widest mb-1">Gráfico de Consumo</h4>
+                          <p className="text-sm font-bold">Resumo de Execução Financeira</p>
+                        </div>
+                        {isNearZero && (
+                          <div className="flex items-center gap-1.5 px-3 py-1 bg-rose-500/10 text-rose-500 rounded-full border border-rose-500/20 animate-pulse">
+                            <AlertTriangle size={12} />
+                            <span className="text-[10px] font-black uppercase tracking-wider">Saldo Crítico</span>
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="space-y-3">
+                        <div className="flex justify-between items-end">
+                          <span className={cn(
+                            "text-2xl font-black tracking-tight",
+                            isNearZero ? "text-rose-500" : "text-primary"
+                          )}>
+                            {percentage.toFixed(1)}%
+                          </span>
+                          <div className="text-right">
+                            <p className="text-[10px] font-black text-text-secondary uppercase tracking-widest">Saldo Restante</p>
+                            <p className={cn(
+                              "text-sm font-black",
+                              isNearZero ? "text-rose-600" : "text-emerald-500"
+                            )}>
+                              {formatCurrency(balance)}
+                            </p>
+                          </div>
+                        </div>
+
+                        <div className="w-full h-3 bg-background rounded-full overflow-hidden border border-border/40 p-0.5">
+                          <motion.div 
+                            initial={{ width: 0 }}
+                            animate={{ width: `${Math.min(100, percentage)}%` }}
+                            transition={{ duration: 1, ease: "easeOut" }}
+                            className={cn(
+                              "h-full rounded-full transition-all shadow-sm",
+                              isNearZero ? "bg-rose-500 shadow-rose-500/20" : "bg-primary shadow-primary/20"
+                            )}
+                          />
+                        </div>
+
+                        <div className="flex justify-between items-center pt-1">
+                          <div className="flex flex-col">
+                            <span className="text-[10px] font-bold text-text-secondary uppercase opacity-60">Consumido</span>
+                            <span className="text-xs font-bold">{formatCurrency(consumed)}</span>
+                          </div>
+                          <div className="flex flex-col items-end">
+                            <span className="text-[10px] font-bold text-text-secondary uppercase opacity-60">Total</span>
+                            <span className="text-xs font-bold text-text-secondary">{formatCurrency(total)}</span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })()}
+
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="space-y-1.5"><label className="text-[10px] font-bold text-text-secondary uppercase tracking-wider ml-1">Número do Contrato</label><input type="text" className="w-full bg-surface-hover border border-border rounded-xl px-4 py-3 outline-none focus:border-primary transition-all text-sm font-bold shadow-inner" value={newContractData.number} onChange={(e) => setNewContractData({ ...newContractData, number: e.target.value })} required /></div>
                   <div className="space-y-1.5"><label className="text-[10px] font-bold text-text-secondary uppercase tracking-wider ml-1">Fornecedor</label><input type="text" className="w-full bg-surface-hover border border-border rounded-xl px-4 py-3 outline-none focus:border-primary transition-all text-sm font-bold shadow-inner" value={newContractData.vendor} onChange={(e) => setNewContractData({ ...newContractData, vendor: e.target.value })} required /></div>
@@ -404,6 +481,41 @@ export const Modals = ({
                   <div className="space-y-1.5"><label className="text-[10px] font-bold text-text-secondary uppercase tracking-wider ml-1">Valor Total (R$)</label><input type="text" className="w-full bg-surface-hover border border-border rounded-xl px-4 py-3 outline-none focus:border-primary transition-all text-sm font-bold shadow-inner" value={newContractData.totalValue} onChange={(e) => setNewContractData({ ...newContractData, totalValue: processCurrencyInput(e.target.value) })} required /></div>
                   <div className="space-y-1.5"><label className="text-[10px] font-bold text-text-secondary uppercase tracking-wider ml-1">Consumo Atual (R$)</label><input type="text" className="w-full bg-surface-hover border border-border rounded-xl px-4 py-3 outline-none focus:border-primary transition-all text-sm font-bold shadow-inner" value={newContractData.consumption} onChange={(e) => setNewContractData({ ...newContractData, consumption: processCurrencyInput(e.target.value) })} /></div>
                 </div>
+
+                {editingContract && (
+                  <div className="pt-6 border-t border-border">
+                    <h4 className="text-[10px] font-black text-text-secondary uppercase tracking-widest mb-4">Processos Associados</h4>
+                    <div className="space-y-2">
+                      {checklistRecords.filter(c => 
+                        c.contractNumber?.trim().toLowerCase() === editingContract.number?.trim().toLowerCase() ||
+                        editingContract.number?.trim().toLowerCase().includes((c.contractNumber || '').replace(/^(N[ºo].?\s*|Contrato\s*)/i, '').trim().toLowerCase()) && c.contractNumber?.length > 2
+                      ).length > 0 ? (
+                        checklistRecords
+                          .filter(c => 
+                            c.contractNumber?.trim().toLowerCase() === editingContract.number?.trim().toLowerCase() ||
+                            editingContract.number?.trim().toLowerCase().includes((c.contractNumber || '').replace(/^(N[ºo].?\s*|Contrato\s*)/i, '').trim().toLowerCase()) && c.contractNumber?.length > 2
+                          )
+                          .map((c) => (
+                            <div key={c.id} className="flex items-center justify-between p-3 bg-surface-hover/50 border border-border rounded-xl">
+                              <div className="flex flex-col">
+                                <span className="text-xs font-bold">{c.processNumber}</span>
+                                <span className="text-[10px] text-text-secondary">{c.submissionDate}</span>
+                              </div>
+                              <div className="text-right">
+                                <span className="text-xs font-bold text-rose-500">{c.invoiceValue}</span>
+                                <p className="text-[8px] font-black uppercase tracking-widest text-text-secondary">{c.status}</p>
+                              </div>
+                            </div>
+                          ))
+                      ) : (
+                        <div className="text-center py-6 border border-dashed border-border rounded-xl">
+                          <p className="text-[10px] font-bold text-text-secondary uppercase">Nenhum processo vinculado</p>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+
                 <div className="flex gap-3 pt-4 border-t border-border mt-auto shrink-0">
                   <button type="button" onClick={() => setShowNewContractModal(false)} className="flex-1 px-6 py-3.5 rounded-2xl font-black uppercase tracking-widest text-[10px] text-text-secondary hover:bg-surface-hover transition-all">Cancelar</button>
                   <button type="submit" disabled={isSaving} className="flex-[2] bg-primary hover:bg-primary/90 disabled:bg-primary/50 text-white px-8 py-3.5 rounded-2xl font-black uppercase tracking-widest text-[10px] flex items-center justify-center gap-2 transition-all shadow-xl shadow-primary/20">
@@ -666,11 +778,35 @@ export const Modals = ({
                   </div>
                   
                   <div className="space-y-2">
-                    <label className="text-[10px] font-black text-text-secondary uppercase tracking-widest ml-1">Valor da Nota Fiscal</label>
+                    <label className="text-[10px] font-black text-text-secondary uppercase tracking-widest ml-1 flex justify-between">
+                      <span>Valor da Nota Fiscal</span>
+                      {(() => {
+                        const stripped = (newChecklistData.contractNumber || '').replace(/^(N[ºo].?\s*|Contrato\s*)/i, '').trim();
+                        const contract = contracts.find(c => 
+                          c.number?.trim().toLowerCase() === newChecklistData.contractNumber?.trim().toLowerCase() ||
+                          c.number?.trim().toLowerCase().includes(stripped.toLowerCase()) && stripped.length > 2
+                        );
+                        if (contract) {
+                          const total = parseCurrencyToNumber(contract.totalValue || '0');
+                          const consumed = parseCurrencyToNumber(contract.consumption || '0');
+                          const balance = total - consumed;
+                          const currentInvoice = parseCurrencyToNumber(newChecklistData.invoiceValue || '0');
+                          
+                          if (currentInvoice > balance && balance > 0) {
+                            return <span className="text-rose-500 flex items-center gap-1"><AlertTriangle size={10} /> Excede Saldo ({formatCurrency(balance)})</span>;
+                          }
+                          return <span className="text-emerald-500">Saldo Disp: {formatCurrency(balance)}</span>;
+                        }
+                        return null;
+                      })()}
+                    </label>
                     <input 
                       type="text" 
                       placeholder="Ex: R$ 1.500,00"
-                      className="w-full bg-surface-hover border border-border rounded-xl px-4 py-3.5 outline-none focus:border-primary transition-all font-bold text-sm text-rose-500 shadow-inner"
+                      className={cn(
+                        "w-full bg-surface-hover border border-border rounded-xl px-4 py-3.5 outline-none focus:border-primary transition-all font-bold text-sm shadow-inner",
+                        parseCurrencyToNumber(newChecklistData.invoiceValue) > 0 ? "text-rose-500" : "text-text-primary"
+                      )}
                       value={newChecklistData.invoiceValue || ''}
                       onChange={(e) => {
                         const newInvoiceVal = processCurrencyInput(e.target.value);
@@ -1500,7 +1636,6 @@ export const Modals = ({
                     </div>
                     <div className="space-y-4">
                       <div><label className="text-[10px] font-black text-text-secondary uppercase tracking-widest block mb-1">Objeto</label><p className="text-sm font-medium text-text-secondary leading-relaxed">{selectedChecklist.object}</p></div>
-                      <div><label className="text-[10px] font-black text-text-secondary uppercase tracking-widest block mb-1">Valor do Contrato</label><p className="text-sm font-black text-text-primary tracking-tight">{selectedChecklist.value}</p></div>
                     </div>
                   </div>
                 </div>
@@ -1546,9 +1681,9 @@ export const Modals = ({
                     </div>
                     <div className="space-y-3">
                       {confirmations.map((conf, idx) => (
-                        <div key={`confirmation-log-${conf.id || idx}`} className="p-4 bg-surface-hover/30 border border-border/50 rounded-2xl flex items-center justify-between group">
+                        <div key={`confirmation-log-${conf.id || idx}`} className="p-4 bg-surface-hover/30 border border-border/50 rounded-2xl flex items-center justify-between group/conf">
                           <div className="flex items-center gap-3">
-                            <div className="w-10 h-10 bg-primary/10 text-primary rounded-xl flex items-center justify-center font-bold">
+                            <div className="w-10 h-10 bg-primary/10 text-primary rounded-xl flex items-center justify-center font-bold group-hover/conf:bg-primary group-hover/conf:text-white transition-all">
                               {conf.nome_confirmante.charAt(0)}
                             </div>
                             <div>
@@ -1558,9 +1693,20 @@ export const Modals = ({
                               </p>
                             </div>
                           </div>
-                          <div className="text-right">
-                            <p className="text-xs font-bold text-text-primary">{format(new Date(conf.data_confirmacao), "dd/MM/yyyy")}</p>
-                            <p className="text-[10px] text-text-secondary font-medium">{format(new Date(conf.data_confirmacao), "HH:mm:ss")}</p>
+                          <div className="flex items-center gap-4">
+                            <div className="text-right">
+                              <p className="text-xs font-bold text-text-primary">{format(new Date(conf.data_confirmacao), "dd/MM/yyyy")}</p>
+                              <p className="text-[10px] text-text-secondary font-medium">{format(new Date(conf.data_confirmacao), "HH:mm:ss")}</p>
+                            </div>
+                            {canDelete && (
+                              <button 
+                                onClick={() => handleDeleteConf(conf.id)}
+                                className="p-2 text-text-secondary/40 hover:text-rose-500 hover:bg-rose-500/10 rounded-lg transition-all opacity-0 group-hover/conf:opacity-100"
+                                title="Excluir Confirmação"
+                              >
+                                <Trash2 size={14} />
+                              </button>
+                            )}
                           </div>
                         </div>
                       ))}

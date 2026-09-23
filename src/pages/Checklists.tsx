@@ -398,7 +398,10 @@ const Checklists = ({
                               Contrato: <span className="font-bold text-text-secondary/80">{item.contractNumber}</span>
                             </p>
                             <p className="text-xs text-text-secondary truncate">
-                              Nota: <span className="font-bold text-rose-500">{item.invoiceNumber || '-'}</span>
+                              Nota: <span className="font-bold text-text-secondary/80">{item.invoiceNumber || '-'}</span>
+                            </p>
+                            <p className="text-xs text-text-secondary truncate">
+                              Valor: <span className="font-bold text-rose-500">{item.invoiceValue || '-'}</span>
                             </p>
                           </div>
 
@@ -688,9 +691,12 @@ const Checklists = ({
                                   </td>
                                   <td className="px-4 py-5">
                                     <div className="flex flex-col gap-0.5">
-                                      <p className="text-xs font-black text-text-primary">{item.value}</p>
-                                      {item.invoiceValue && (
-                                        <p className="text-[9px] font-black text-rose-500 uppercase tracking-tighter">Nota: {item.invoiceValue.startsWith('R$') ? item.invoiceValue : `R$ ${item.invoiceValue}`}</p>
+                                      {item.invoiceValue ? (
+                                        <p className="text-sm font-black text-text-primary">
+                                          {item.invoiceValue.startsWith('R$') ? item.invoiceValue : `R$ ${item.invoiceValue}`}
+                                        </p>
+                                      ) : (
+                                        <p className="text-xs font-black text-text-primary">{item.value}</p>
                                       )}
                                     </div>
                                   </td>

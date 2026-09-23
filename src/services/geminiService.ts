@@ -76,7 +76,7 @@ export const analyzeDataForReport = async (input: any, isPdf: boolean = false) =
 
     const text = await callAIProxy([{ role: 'user', parts: [{ text: prompt }] }], {
       responseMimeType: "application/json"
-    }, "gemini-3.8-flash");
+    }, "gemini-1.5-flash");
     
     return JSON.parse(text || "{}");
   } catch (error) {

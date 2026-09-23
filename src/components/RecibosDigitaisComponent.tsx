@@ -392,10 +392,24 @@ export function RecibosDigitaisComponent({ currentUser, compact = false }: { cur
               </div>
 
               {/* Modal Footer */}
-              <div className="p-5 md:p-8 border-t border-border bg-surface-hover/30">
+              <div className="p-5 md:p-8 border-t border-border bg-surface-hover/30 flex flex-col sm:flex-row gap-3">
+                {isAuthorizedToDelete && (
+                  <button 
+                    onClick={(e) => {
+                      handleDeleteRecibo(selectedRecibo.id, e as any);
+                      setSelectedRecibo(null);
+                    }}
+                    className="flex-1 py-4 md:py-5 bg-rose-500/10 text-rose-500 border border-rose-500/20 rounded-2xl md:rounded-[24px] text-xs font-black uppercase tracking-widest transition-all hover:bg-rose-500 hover:text-white active:scale-[0.98] flex items-center justify-center gap-2"
+                  >
+                    <Trash2 size={16} /> Excluir Registro
+                  </button>
+                )}
                 <button 
                   onClick={() => setSelectedRecibo(null)}
-                  className="w-full py-4 md:py-5 bg-text-primary text-background rounded-2xl md:rounded-[24px] text-xs font-black uppercase tracking-widest transition-all hover:scale-[1.01] active:scale-[0.98] shadow-xl shadow-text-primary/10"
+                  className={cn(
+                    "py-4 md:py-5 bg-text-primary text-background rounded-2xl md:rounded-[24px] text-xs font-black uppercase tracking-widest transition-all hover:scale-[1.01] active:scale-[0.98] shadow-xl shadow-text-primary/10",
+                    isAuthorizedToDelete ? "flex-1" : "w-full"
+                  )}
                 >
                   Fechar Auditoria
                 </button>

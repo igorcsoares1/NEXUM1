@@ -4,6 +4,8 @@ import { Contract, User } from '../types';
 
 const handleError = (error: any, ctx: string) => console.error(`Erro em ${ctx}:`, error?.message);
 
+import { parseCurrencyToNumber, formatCurrency } from '../utils/format';
+
 export const handleSaveContract = async (
   newContractData: Omit<Contract, 'id'>,
   editingContract: Contract | null,
@@ -84,13 +86,49 @@ export const handleSyncContracts = async (
   
   setIsSyncing(true);
   try {
-    // Simulate synchronization with the main database
-    // In a real scenario, this would fetch from an external API or re-fetch from Supabase
-    await new Promise(resolve => setTimeout(resolve, 1500));
-    addNotification("Sucesso", "Base de dados sincronizada com sucesso.", "success");
+    // 1. Buscar todos os contratos e checklists
+    const { data: contracts, error: cErr } = await supabase
+      .from('contracts')
+      .select('*')
+      .eq('prefeituraId', currentUser.prefeituraId);
+    
+    const { data: checklists, error: chErr } = await supabase
+      .from('checklists')
+      .select('*')
+      .eq('prefeituraId', currentUser.prefeituraId);
+
+    if (cErr) throw cErr;
+    if (chErr) throw chErr;
+
+    // 2. Recalcular consumos
+    const updates = (contracts || []).map(async (contract) => {
+      // Filtrar checklists que pertencem a este contrato (trim e ignore case)
+      const relatedChecklists = (checklists || []).filter(ch => 
+        ch.contractNumber?.trim().toLowerCase() === contract.number?.trim().toLowerCase()
+      );
+
+      const totalConsumption = relatedChecklists.reduce((acc, ch) => {
+        return acc + parseCurrencyToNumber(ch.invoiceValue || '0');
+      }, 0);
+
+      const formattedConsumption = formatCurrency(totalConsumption);
+
+      // Só atualizar se mudou
+      if (contract.consumption !== formattedConsumption) {
+        return supabase
+          .from('contracts')
+          .update({ consumption: formattedConsumption })
+          .eq('id', contract.id);
+      }
+      return null;
+    });
+
+    await Promise.all(updates);
+    
+    addNotification("Sucesso", "Base de dados e saldos sincronizados com sucesso! ✅", "success");
   } catch (error: any) {
     handleError(error, "sincronização");
-    addNotification("Erro", "Falha na sincronização com os servidores.", "error");
+    addNotification("Erro", "Falha na sincronização dos saldos.", "error");
   } finally {
     setIsSyncing(false);
   }

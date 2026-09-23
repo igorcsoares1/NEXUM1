@@ -14,7 +14,8 @@ import {
   PenTool,
   Clock,
   RefreshCw,
-  Trash2
+  Trash2,
+  X
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import jsPDF from 'jspdf';
@@ -23,7 +24,7 @@ import { supabase } from '../../lib/supabase';
 import { cn } from '../../lib/utils';
 import { NotaFiscal, User as UserType, Contract } from '../../types';
 import { processCurrencyInput, parseCurrencyToNumber } from '../../utils/format';
-import { format, parseISO } from 'date-fns';
+import { format, parseISO, startOfDay, endOfDay, startOfWeek, endOfWeek, startOfMonth, endOfMonth, subDays } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 
 interface NotasFiscaisProps {
@@ -34,6 +35,8 @@ interface NotasFiscaisProps {
 // Roles que podem confirmar recebimento e excluir
 const CAN_RECEIVE_ROLES = ['superadmin', 'admin', 'gestor'];
 
+type PeriodType = 'hoje' | 'semana' | 'mes' | 'custom';
+
 export default function NotasFiscais({ currentUser, addNotification }: NotasFiscaisProps) {
   const [activeTab, setActiveTab] = useState<'enviar' | 'receber' | 'recebidas'>('enviar');
   const [contracts, setContracts] = useState<Contract[]>([]);
@@ -41,6 +44,12 @@ export default function NotasFiscais({ currentUser, addNotification }: NotasFisc
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+
+  // Estados para o filtro de período do relatório
+  const [showPeriodSelector, setShowPeriodSelector] = useState(false);
+  const [periodType, setPeriodType] = useState<PeriodType>('hoje');
+  const [customDateStart, setCustomDateStart] = useState(new Date().toISOString().split('T')[0]);
+  const [customDateEnd, setCustomDateEnd] = useState(new Date().toISOString().split('T')[0]);
 
   const [formData, setFormData] = useState<Partial<NotaFiscal>>({
     numero_nota: '',
@@ -95,6 +104,93 @@ export default function NotasFiscais({ currentUser, addNotification }: NotasFisc
       if (addNotification) addNotification("Erro", "Não foi possível carregar as notas fiscais.", "error");
     } finally {
       setLoading(false);
+    }
+  };
+
+  // Função para extrair data em formato YYYY-MM-DD de qualquer formato
+  const extractDateOnly = (dateString: string): string => {
+    if (!dateString) return '';
+    // Se já está em YYYY-MM-DD, retorna
+    if (dateString.match(/^\d{4}-\d{2}-\d{2}/)) {
+      return dateString.substring(0, 10);
+    }
+    // Se está em formato diferente, tenta converter
+    try {
+      const date = new Date(dateString);
+      if (isNaN(date.getTime())) return '';
+      return date.toISOString().split('T')[0];
+    } catch {
+      return '';
+    }
+  };
+
+  // Função para filtrar notas por período
+  const getFilteredNotasByPeriod = (): NotaFiscal[] => {
+    let startDateStr: string;
+    let endDateStr: string;
+
+    const today = new Date();
+    // Pega a data de hoje em formato YYYY-MM-DD
+    const todayStr = today.toISOString().split('T')[0];
+
+    switch (periodType) {
+      case 'hoje':
+        // Filtro rigoroso: APENAS do dia de hoje
+        startDateStr = todayStr;
+        endDateStr = todayStr;
+        break;
+      case 'semana':
+        const weekStart = startOfWeek(today, { weekStartsOn: 1 });
+        const weekEnd = endOfWeek(today, { weekStartsOn: 1 });
+        startDateStr = weekStart.toISOString().split('T')[0];
+        endDateStr = weekEnd.toISOString().split('T')[0];
+        break;
+      case 'mes':
+        const monthStart = startOfMonth(today);
+        const monthEnd = endOfMonth(today);
+        startDateStr = monthStart.toISOString().split('T')[0];
+        endDateStr = monthEnd.toISOString().split('T')[0];
+        break;
+      case 'custom':
+        startDateStr = customDateStart;
+        endDateStr = customDateEnd;
+        break;
+      default:
+        return notas.filter(n => n.status === 'recebido');
+    }
+
+    return notas.filter(nota => {
+      if (!nota.data_emissao) return false;
+      if (nota.status !== 'recebido') return false;
+      
+      // Extrai a data em formato YYYY-MM-DD
+      const notaDateStr = extractDateOnly(nota.data_emissao);
+      
+      if (!notaDateStr) return false;
+      
+      // Comparação rigorosa: >= startDate AND <= endDate
+      const isInRange = notaDateStr >= startDateStr && notaDateStr <= endDateStr;
+      
+      return isInRange;
+    });
+  };
+
+  // Função para obter período formatado
+  const getPeriodLabel = (): string => {
+    const today = new Date();
+    switch (periodType) {
+      case 'hoje':
+        return `Hoje (${format(today, 'dd/MM/yyyy')})`;
+      case 'semana':
+        const weekStart = startOfWeek(today, { weekStartsOn: 1 });
+        const weekEnd = endOfWeek(today, { weekStartsOn: 1 });
+        return `Semana: ${format(weekStart, 'dd/MM')} - ${format(weekEnd, 'dd/MM/yyyy')}`;
+      case 'mes':
+        return `Mês de ${format(today, 'MMMM/yyyy', { locale: ptBR })}`;
+      case 'custom':
+        return `${format(new Date(customDateStart), 'dd/MM/yyyy')} - ${format(new Date(customDateEnd), 'dd/MM/yyyy')}`;
+      default:
+        return 'Período não definido';
     }
   };
 
@@ -183,37 +279,55 @@ export default function NotasFiscais({ currentUser, addNotification }: NotasFisc
 
   const generateReport = () => {
     try {
+      const filteredNotas = getFilteredNotasByPeriod();
+      
+      if (filteredNotas.length === 0) {
+        if (addNotification) {
+          addNotification("Atenção", `Nenhuma nota recebida no período: ${getPeriodLabel()}`, "warning");
+        } else {
+          alert(`Nenhuma nota recebida no período: ${getPeriodLabel()}`);
+        }
+        return;
+      }
+
       const doc = new jsPDF();
       const now = new Date();
       const formattedDate = format(now, "dd/MM/yyyy HH:mm", { locale: ptBR });
+      const periodLabel = getPeriodLabel();
 
       // Configuração de Título
       doc.setFontSize(20);
       doc.setTextColor(0, 0, 0);
-      doc.text('Relatório de Notas Fiscais', 14, 22);
+      doc.text('Relatório de Notas Fiscais Recebidas', 14, 22);
       
       // Metadados
       doc.setFontSize(10);
       doc.setTextColor(100);
-      doc.text(`Responsável: ${currentUser?.name || 'Sistema'}`, 14, 30);
-      doc.text(`Data de Geração: ${formattedDate}`, 14, 35);
-      doc.text(`Total de Registros: ${notas.length}`, 14, 40);
+      doc.text(`Período: ${periodLabel}`, 14, 30);
+      doc.text(`Responsável: ${currentUser?.name || 'Sistema'}`, 14, 35);
+      doc.text(`Data de Geração: ${formattedDate}`, 14, 40);
+      doc.text(`Total de Registros: ${filteredNotas.length}`, 14, 45);
+
+      // Cálculo do total de valores
+      const totalValue = filteredNotas.reduce((sum, nota) => sum + Number(nota.valor), 0);
+      doc.setTextColor(79, 70, 229); // Cor primária
+      doc.text(`Valor Total: ${new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(totalValue)}`, 14, 50);
 
       // Preparação dos Dados
-      const tableData = notas.map(nota => [
+      const tableData = filteredNotas.map(nota => [
         nota.numero_nota,
         nota.fornecedor,
         new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(Number(nota.valor)),
         nota.data_emissao ? format(parseISO(nota.data_emissao), 'dd/MM/yyyy') : '-',
-        nota.status === 'recebido' ? 'Recebido' : 'Pendente',
         nota.enviado_por || '-',
-        nota.recebido_por || '-'
+        nota.recebido_por || '-',
+        nota.recebido_em ? format(parseISO(nota.recebido_em), 'dd/MM/yyyy') : '-'
       ]);
 
       // Geração da Tabela
       autoTable(doc, {
-        startY: 50,
-        head: [['Número', 'Fornecedor', 'Valor', 'Emissão', 'Status', 'Enviado Por', 'Recebido Por']],
+        startY: 58,
+        head: [['Número', 'Fornecedor', 'Valor', 'Emissão', 'Enviado Por', 'Recebido Por', 'Recebimento']],
         body: tableData,
         theme: 'striped',
         headStyles: { fillColor: [79, 70, 229], textColor: [255, 255, 255], fontStyle: 'bold' },
@@ -223,7 +337,7 @@ export default function NotasFiscais({ currentUser, addNotification }: NotasFisc
           1: { cellWidth: 'auto' },
           2: { cellWidth: 30, halign: 'right' },
           3: { cellWidth: 25 },
-          4: { cellWidth: 20 },
+          4: { cellWidth: 25 },
           5: { cellWidth: 25 },
           6: { cellWidth: 25 }
         }
@@ -243,11 +357,14 @@ export default function NotasFiscais({ currentUser, addNotification }: NotasFisc
         );
       }
 
-      doc.save(`Relatorio_NotasFiscais_${format(now, 'yyyyMMdd_HHmm')}.pdf`);
+      const filename = `Relatorio_NotasFiscais_${format(now, 'yyyyMMdd_HHmm')}_${periodType}.pdf`;
+      doc.save(filename);
       
       if (addNotification) {
-        addNotification("Sucesso", "Relatório PDF gerado com sucesso!", "success");
+        addNotification("Sucesso", `Relatório PDF gerado com sucesso! (${filteredNotas.length} notas)`, "success");
       }
+
+      setShowPeriodSelector(false);
     } catch (error) {
       console.error('Erro ao gerar PDF:', error);
       if (addNotification) {
@@ -279,7 +396,7 @@ export default function NotasFiscais({ currentUser, addNotification }: NotasFisc
           
           {!(currentUser?.role === 'compras' && activeTab === 'recebidas') && (
             <button
-              onClick={generateReport}
+              onClick={() => setShowPeriodSelector(!showPeriodSelector)}
               className="flex items-center justify-center gap-2 px-6 py-3 bg-accent hover:bg-accent-hover text-white rounded-2xl font-black transition-all shadow-lg shadow-accent/20 active:scale-95 shrink-0"
             >
               <PenTool size={18} />
@@ -314,6 +431,112 @@ export default function NotasFiscais({ currentUser, addNotification }: NotasFisc
           </button>
         </div>
       </header>
+
+      {/* MODAL - Seletor de Período */}
+      <AnimatePresence>
+        {showPeriodSelector && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            onClick={() => setShowPeriodSelector(false)}
+            className="fixed inset-0 bg-black/50 flex items-center justify-center z-50"
+          >
+            <motion.div
+              initial={{ scale: 0.95 }}
+              animate={{ scale: 1 }}
+              exit={{ scale: 0.95 }}
+              onClick={e => e.stopPropagation()}
+              className="bg-surface border border-border/40 rounded-3xl p-8 max-w-lg w-full mx-4 shadow-xl"
+            >
+              <div className="flex justify-between items-center mb-6">
+                <h2 className="text-xl font-black text-text-primary flex items-center gap-2">
+                  <Calendar size={24} />
+                  Selecione o Período
+                </h2>
+                <button
+                  onClick={() => setShowPeriodSelector(false)}
+                  className="w-8 h-8 flex items-center justify-center hover:bg-background rounded-lg transition"
+                >
+                  <X size={20} />
+                </button>
+              </div>
+
+              <div className="space-y-4 mb-8">
+                {/* Opções de Período Rápido */}
+                <div className="grid grid-cols-2 gap-3">
+                  {[
+                    { value: 'hoje' as PeriodType, label: 'Hoje' },
+                    { value: 'semana' as PeriodType, label: 'Esta Semana' },
+                    { value: 'mes' as PeriodType, label: 'Este Mês' },
+                    { value: 'custom' as PeriodType, label: 'Personalizado' }
+                  ].map(option => (
+                    <button
+                      key={option.value}
+                      onClick={() => setPeriodType(option.value)}
+                      className={cn(
+                        "px-4 py-3 rounded-2xl font-bold text-sm transition-all",
+                        periodType === option.value
+                          ? "bg-primary text-white shadow-md shadow-primary/20"
+                          : "bg-background text-text-primary hover:bg-background/80 border border-border/40"
+                      )}
+                    >
+                      {option.label}
+                    </button>
+                  ))}
+                </div>
+
+                {/* Datas Customizadas */}
+                {periodType === 'custom' && (
+                  <div className="space-y-3 bg-background rounded-2xl p-4">
+                    <div>
+                      <label className="text-xs font-black text-text-secondary uppercase ml-1 mb-2 block">Data Inicial</label>
+                      <input
+                        type="date"
+                        value={customDateStart}
+                        onChange={e => setCustomDateStart(e.target.value)}
+                        className="w-full bg-surface border border-border/40 rounded-xl px-4 py-2.5 text-sm font-bold"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-xs font-black text-text-secondary uppercase ml-1 mb-2 block">Data Final</label>
+                      <input
+                        type="date"
+                        value={customDateEnd}
+                        onChange={e => setCustomDateEnd(e.target.value)}
+                        className="w-full bg-surface border border-border/40 rounded-xl px-4 py-2.5 text-sm font-bold"
+                      />
+                    </div>
+                  </div>
+                )}
+
+                {/* Preview do Período */}
+                <div className="bg-primary/10 border border-primary/20 rounded-2xl p-4">
+                  <p className="text-xs font-black text-primary uppercase mb-1">Período Selecionado:</p>
+                  <p className="text-sm font-bold text-text-primary">{getPeriodLabel()}</p>
+                </div>
+              </div>
+
+              {/* Botões de Ação */}
+              <div className="flex gap-3">
+                <button
+                  onClick={() => setShowPeriodSelector(false)}
+                  className="flex-1 px-4 py-3 bg-background border border-border/40 text-text-primary rounded-2xl font-black hover:bg-background/80 transition-all"
+                >
+                  Cancelar
+                </button>
+                <button
+                  onClick={generateReport}
+                  className="flex-1 px-4 py-3 bg-accent hover:bg-accent-hover text-white rounded-2xl font-black shadow-lg shadow-accent/20 transition-all flex items-center justify-center gap-2"
+                >
+                  <FileText size={18} />
+                  Gerar Relatório
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       <main className="flex-1 overflow-y-auto px-6 lg:px-8 pb-8">
         <AnimatePresence mode="wait">

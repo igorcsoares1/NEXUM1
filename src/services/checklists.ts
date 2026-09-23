@@ -5,6 +5,87 @@ import { parseCurrencyToNumber, formatCurrency } from '../utils/format';
 
 const handleError = (error: any, ctx: string) => console.error(`Erro em ${ctx}:`, error?.message);
 
+export const updateContractConsumption = async (contractNumber: string, valueChange: number, prefeituraId?: string, addNotification?: (title: string, message: string, type: any) => void) => {
+  if (!contractNumber || valueChange === 0) return;
+  
+  const cleanNumber = contractNumber.trim();
+  console.log(`🔍 [CONTRATO] Tentando atualizar consumo: ${cleanNumber} | Alteração: R$ ${valueChange.toFixed(2)} | Prefeitura: ${prefeituraId || 'Não informada'}`);
+  
+  try {
+    const stripped = cleanNumber.replace(/^(N[ºo].?\s*|Contrato\s*)/i, '').trim();
+    
+    let query = supabase
+      .from('contracts')
+      .select('id, number, consumption, totalValue, prefeituraId');
+
+    if (prefeituraId) {
+      query = query.eq('prefeituraId', prefeituraId);
+    }
+
+    // Primeiro tenta busca exata
+    let { data: contract, error: fetchError } = await query.ilike('number', cleanNumber).maybeSingle();
+
+    // Se não achar, tenta busca flexível (contém o número sem prefixos)
+    if (!contract && !fetchError) {
+      console.log(`🔎 Tentando busca flexível para: %${stripped}%`);
+      const { data: fuzzyContract, error: fuzzyError } = await supabase
+        .from('contracts')
+        .select('id, number, consumption, totalValue, prefeituraId')
+        .eq('prefeituraId', prefeituraId)
+        .ilike('number', `%${stripped}%`)
+        .maybeSingle(); // Se houver múltiplos, maybeSingle retornará erro, o que é seguro
+      
+      if (fuzzyContract) {
+        contract = fuzzyContract;
+        console.log(`🎯 Contrato encontrado via busca flexível: ${contract.number}`);
+      }
+      fetchError = fuzzyError;
+    }
+
+    if (fetchError) {
+      console.error("❌ Erro ao buscar contrato:", fetchError);
+      return;
+    }
+
+    if (contract) {
+      const currentConsumption = parseCurrencyToNumber(contract.consumption || '0');
+      const totalValue = parseCurrencyToNumber(contract.totalValue || '0');
+      
+      let newConsumption = currentConsumption + valueChange;
+      if (totalValue > 0) {
+        newConsumption = Math.max(0, Math.min(totalValue, newConsumption));
+      } else {
+        newConsumption = Math.max(0, newConsumption);
+      }
+      
+      console.log(`📊 [CONTRATO] ${contract.number} encontrado:`, {
+        id: contract.id,
+        antes: currentConsumption,
+        alteracao: valueChange,
+        depois: newConsumption,
+        total: totalValue
+      });
+
+      const { error: updateError } = await supabase
+        .from('contracts')
+        .update({ 
+          consumption: formatCurrency(newConsumption)
+        })
+        .eq('id', contract.id);
+        
+      if (updateError) throw updateError;
+      console.log(`✅ [CONTRATO] ${contract.number} atualizado com sucesso para ${formatCurrency(newConsumption)}.`);
+    } else {
+      console.warn(`⚠️ [CONTRATO] Número "${cleanNumber}" não encontrado no banco de dados para abatimento.`);
+      if (addNotification) {
+        addNotification("Atenção", `Contrato ${cleanNumber} não encontrado. O saldo não foi atualizado automaticamente.`, "atencao");
+      }
+    }
+  } catch (error) {
+    console.error("❌ Erro fatal ao atualizar consumo do contrato:", error);
+  }
+};
+
 export const handleToggleChecklistItem = async (
   checklistId: string,
   itemId: string,
@@ -147,7 +228,8 @@ export const handleSaveChecklist = async (
   setEditingChecklist: (val: ChecklistItem | null) => void,
   setNewChecklistData: (val: Omit<ChecklistItem, 'id'>) => void,
   addNotification: (title: string, message: string, type: any) => void,
-  fetchChecklistRecords?: () => Promise<void>
+  fetchChecklistRecords?: () => Promise<void>,
+  fetchContracts?: () => Promise<void>
 ) => {
   const allChecked = newChecklistData.items && newChecklistData.items.length > 0 && newChecklistData.items.every(item => item.checked);
   const calculatedStatus = allChecked ? 'concluido' : 'em_analise';
@@ -215,7 +297,7 @@ export const handleSaveChecklist = async (
 
     if (error) {
       console.warn("Erro ao salvar checklist, tentando modo resiliente...", error.message);
-      const possibleProblematicColumns = ['currentSector', 'history', 'invoiceValue', 'invoiceNumber'];
+      const possibleProblematicColumns = ['currentSector', 'history', 'invoiceValue'];
       let resilientData = { ...newRecordData };
       let currentError = error;
 
@@ -233,8 +315,48 @@ export const handleSaveChecklist = async (
 
     if (error) throw error;
     
+    // ✅ ABATER/DEVOLVER DO CONTRATO IMEDIATAMENTE
+    const newVal = parseCurrencyToNumber(newChecklistData.invoiceValue || '0');
+    const newContr = newChecklistData.contractNumber;
+    const pId = currentUser.prefeituraId;
+
+    if (editingChecklist) {
+      // EDITANDO: Recalcular diferença
+      const oldVal = parseCurrencyToNumber(editingChecklist.invoiceValue || '0');
+      const oldContr = editingChecklist.contractNumber;
+
+      if (oldContr === newContr) {
+        // Mesmo contrato: apenas a diferença
+        if (oldVal !== newVal) {
+          const difference = newVal - oldVal;
+          console.log(`📝 Editando: ${newContr} | Diferença: R$ ${difference.toFixed(2)}`);
+          await updateContractConsumption(newContr, difference, pId, addNotification);
+        }
+      } else {
+        // Contrato diferente: devolver antigo + abater novo
+        if (oldContr) {
+          console.log(`⬅️ Devolvendo ${oldContr}: -R$ ${oldVal.toFixed(2)}`);
+          await updateContractConsumption(oldContr, -oldVal, pId, addNotification);
+        }
+        if (newContr && newVal > 0) {
+          console.log(`➡️ Abatendo ${newContr}: -R$ ${newVal.toFixed(2)}`);
+          await updateContractConsumption(newContr, newVal, pId, addNotification);
+        }
+      }
+    } else {
+      // NOVO CHECKLIST: Abater imediatamente
+      if (newContr && newVal > 0) {
+        console.log(`✅ NOVO: ${newContr} | Abatendo: -R$ ${newVal.toFixed(2)}`);
+        await updateContractConsumption(newContr, newVal, pId, addNotification);
+      }
+    }
+    
     if (fetchChecklistRecords) {
       await fetchChecklistRecords();
+    }
+
+    if (fetchContracts) {
+      await fetchContracts();
     }
 
     setShowNewChecklistModal(false);
@@ -252,7 +374,7 @@ export const handleSaveChecklist = async (
       status: 'em_analise',
       items: DEFAULT_CHECKLIST_ITEMS.map(item => ({ ...item, id: crypto.randomUUID() }))
     });
-    addNotification("Sucesso", "Checklist salvo com sucesso!", "success");
+    addNotification("Sucesso", "Checklist salvo e saldo atualizado! ✅", "success");
   } catch (error) {
     handleError(error, "salvar checklist");
     addNotification("Erro", "Erro de permissão: Você não tem autorização para salvar checklists.", "error");
@@ -263,7 +385,9 @@ export const handleDeleteChecklist = async (
   id: string,
   setItemToDelete: (val: string | null) => void,
   setDeleteType: (val: any) => void,
-  setShowDeleteConfirm: (val: boolean) => void
+  setShowDeleteConfirm: (val: boolean) => void,
+  checklistRecords: ChecklistItem[] = [],
+  addNotification?: (title: string, message: string, type: any) => void
 ) => {
   setItemToDelete(id);
   setDeleteType('checklist');
@@ -278,18 +402,30 @@ export const handleBulkDeleteChecklists = async (
 ) => {
   try {
     await Promise.all(selectedChecklistIds.map(async id => {
-      // Find checklist to get its process number
+      // Find checklist to get its contract and invoice value
       const { data: checklist } = await supabase
         .from('checklists')
-        .select('processNumber')
+        .select('processNumber, contractNumber, invoiceValue, prefeituraId')
         .eq('id', id)
         .maybeSingle();
 
-      if (checklist && checklist.processNumber) {
-        await supabase
-          .from('recibos_digitais')
-          .delete()
-          .eq('processo_numero', checklist.processNumber);
+      if (checklist) {
+        // Devolver valor ao contrato
+        if (checklist.contractNumber) {
+          const value = parseCurrencyToNumber(checklist.invoiceValue || '0');
+          if (value > 0) {
+            console.log(`🗑️ Bulk Delete: Devolvendo R$ ${value.toFixed(2)} para ${checklist.contractNumber}`);
+            await updateContractConsumption(checklist.contractNumber, -value, checklist.prefeituraId, addNotification);
+          }
+        }
+
+        // Deletar recibos digitais
+        if (checklist.processNumber) {
+          await supabase
+            .from('recibos_digitais')
+            .delete()
+            .eq('processo_numero', checklist.processNumber);
+        }
       }
 
       return supabase.from('checklists').delete().eq('id', id);
@@ -297,7 +433,7 @@ export const handleBulkDeleteChecklists = async (
 
     setSelectedChecklistIds([]);
     setShowChecklistSelectionModal(false);
-    addNotification("Sucesso", "Checklists excluídos com sucesso.", "success");
+    addNotification("Sucesso", "Checklists excluídos e saldos devolvidos! ✅", "success");
   } catch (error) {
     handleError(error, "excluir checklists em lote");
     addNotification("Erro", "Erro ao excluir checklists em lote.", "error");
@@ -430,5 +566,20 @@ export const fetchChecklistConfirmations = async (checklistId: string): Promise<
   } catch (error) {
     handleError(error, "buscar confirmações");
     return [];
+  }
+};
+
+export const deleteChecklistConfirmation = async (id: string): Promise<boolean> => {
+  try {
+    const { error } = await supabase
+      .from('checklist_confirmacoes')
+      .delete()
+      .eq('id', id);
+    
+    if (error) throw error;
+    return true;
+  } catch (error) {
+    handleError(error, "excluir confirmação");
+    return false;
   }
 };

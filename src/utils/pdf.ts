@@ -124,7 +124,6 @@ export const generateChecklistPDF = (checklist: any, systemSettings: any) => {
       ['Nº do Processo', checklist.processNumber || '-'],
       ['Nº do Contrato', checklist.contractNumber || '-'],
       ['Fornecedor', checklist.vendor || '-'],
-      ['Valor do Contrato', checklist.value || '-'],
       ['Valor da Nota', checklist.invoiceValue || '-'],
       ['Nº da Nota', checklist.invoiceNumber || '-'],
       ['Objeto', checklist.object || '-']

@@ -782,14 +782,15 @@ export default function App() {
     );
   };
 
-  const handleImportFileLocal = (e: React.ChangeEvent<HTMLInputElement>) => {
-    handleImportFile(
+  const handleImportFileLocal = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    await handleImportFile(
       e,
       setIsImporting,
       addNotification,
       currentUser,
       contracts
     );
+    fetchContracts();
   };
 
   const handleImportFuelLocal = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -804,11 +805,7 @@ export default function App() {
           const data = event.target?.result;
           const workbook = XLSX.read(data, { type: 'binary' });
           
-          const monthInput = prompt('Qual mês? (ex: agosto, setembro, outubro)');
-          if (!monthInput) {
-            setIsImporting(false);
-            return;
-          }
+          const monthInput = 'importado';
 
           const records: any[] = [];
           const today = new Date().toISOString().split('T')[0];
@@ -834,18 +831,17 @@ export default function App() {
               if (liters === 0 || unitPrice === 0 || totalCost === 0) continue;
 
               records.push({
-                vehicle: vehicle,
-                driver: '',
-                date: today,
-                quantity: liters,
-                cost: totalCost,
-                status: 'concluido',
-                fuelType: fuelType.toUpperCase(),
-                unitPrice: unitPrice,
-                plate: '',
-                prefeituraId: currentUser?.prefeituraId || '1',
-                month: monthInput.toLowerCase()
-              });
+  vehicle: vehicle,
+  driver: '',
+  date: today,
+  quantity: liters,
+  cost: totalCost,
+  status: 'concluido',
+  fuelType: fuelType.toUpperCase(),
+  unitPrice: unitPrice,
+  plate: '',
+  prefeituraId: currentUser?.prefeituraId || '1'
+});
             }
           }
 
@@ -1016,15 +1012,17 @@ export default function App() {
     setIsSavingChecklist(true);
     try {
       await checklistService.handleSaveChecklist(
-        newChecklistData,
-        editingChecklist,
-        currentUser,
-        setShowNewChecklistModal,
-        setEditingChecklist,
-        setNewChecklistData,
-        addNotification,
-        fetchChecklists
-      );
+  newChecklistData,
+  editingChecklist,
+  currentUser,
+  setShowNewChecklistModal,
+  setEditingChecklist,
+  setNewChecklistData,
+  addNotification,
+  fetchChecklists,
+  fetchContracts  // 
+);
+      fetchContracts();
       logActivity(
         currentUser, 
         editingChecklist ? 'Edição de Processo' : 'Novo Processo', 
@@ -1275,23 +1273,11 @@ export default function App() {
           .maybeSingle();
 
         if (checklist) {
-          // 1. Revert contract consumption
+          // 1. Revert contract consumption using robust service
           if (checklist.contractNumber && checklist.invoiceValue) {
-            const { data: contract } = await supabase
-              .from('contracts')
-              .select('*')
-              .eq('number', checklist.contractNumber)
-              .maybeSingle();
-
-            if (contract) {
-              const invoiceVal = parseCurrencyToNumber(checklist.invoiceValue);
-              const currentConsumption = parseCurrencyToNumber(contract.consumption);
-              const newConsumption = Math.max(0, currentConsumption - invoiceVal);
-              
-              await supabase
-                .from('contracts')
-                .update({ consumption: formatCurrency(newConsumption) })
-                .eq('id', contract.id);
+            const invoiceVal = parseCurrencyToNumber(checklist.invoiceValue);
+            if (invoiceVal > 0) {
+              await checklistService.updateContractConsumption(checklist.contractNumber, -invoiceVal, checklist.prefeituraId, addNotification);
             }
           }
 
@@ -1307,6 +1293,7 @@ export default function App() {
         const { error } = await supabase.from('checklists').delete().eq('id', itemToDelete);
         if (error) throw error;
         setChecklistRecords(prev => prev.filter(c => c.id !== itemToDelete));
+        fetchContracts();
         logActivity(currentUser, 'Exclusão de Checklist', `Excluiu checklist ID: ${itemToDelete}`);
       } else if (deleteType === 'fuelBulk') {
         await fuelService.handleBulkDeleteFuel(
@@ -1330,6 +1317,7 @@ export default function App() {
           setShowChecklistSelectionModal,
           addNotification
         );
+        fetchContracts();
       } else if (deleteType === 'contractBulk') {
         await contractService.handleBulkDeleteContracts(
           selectedContractIds,
@@ -1662,6 +1650,7 @@ export default function App() {
       setNewContractData={setNewContractData}
       handleSaveContract={handleSaveContract}
       isSaving={isSavingDaily || isSavingSettings || isSavingChecklist}
+      contracts={contracts}
       showNewFuelModal={showNewFuelModal}
       setShowNewFuelModal={setShowNewFuelModal}
       editingFuel={editingFuel}
