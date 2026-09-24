@@ -41,6 +41,7 @@ import { generateChecklistPDF, generateChecklistsReportPDF } from '../utils/pdf'
 import { fetchChecklistConfirmations, deleteChecklistConfirmation } from '../services/checklists';
 import { PrintHeader } from './ui/PrintHeader';
 import { processCurrencyInput, parseCurrencyToNumber, formatCurrency } from '../utils/format';
+import { getContractTotalValue, getContractBalance } from '../services/contracts';
 
 interface ModalsProps {
   showNewContractModal: boolean;
@@ -787,9 +788,7 @@ export const Modals = ({
                           c.number?.trim().toLowerCase().includes(stripped.toLowerCase()) && stripped.length > 2
                         );
                         if (contract) {
-                          const total = parseCurrencyToNumber(contract.totalValue || '0');
-                          const consumed = parseCurrencyToNumber(contract.consumption || '0');
-                          const balance = total - consumed;
+                          const balance = getContractBalance(contract);
                           const currentInvoice = parseCurrencyToNumber(newChecklistData.invoiceValue || '0');
                           
                           if (currentInvoice > balance && balance > 0) {
@@ -1601,7 +1600,7 @@ export const Modals = ({
 
               <div className="flex-1 overflow-y-auto p-4 sm:p-8 space-y-8 no-scrollbar">
                 {/* Header Grid */}
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-6">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-6">
                   <div className="glass-card bg-surface-hover/30 border-border/50 p-4">
                     <p className="text-[10px] font-black text-text-secondary uppercase tracking-widest mb-2">Data de Envio</p>
                     <div className="flex items-center gap-2 text-text-primary">
@@ -1701,10 +1700,10 @@ export const Modals = ({
                             {canDelete && (
                               <button 
                                 onClick={() => handleDeleteConf(conf.id)}
-                                className="p-2 text-text-secondary/40 hover:text-rose-500 hover:bg-rose-500/10 rounded-lg transition-all opacity-0 group-hover/conf:opacity-100"
+                                className="p-2 text-text-secondary/60 sm:text-text-secondary/40 hover:text-rose-500 hover:bg-rose-500/10 rounded-lg transition-all opacity-100 sm:opacity-0 sm:group-hover/conf:opacity-100"
                                 title="Excluir Confirmação"
                               >
-                                <Trash2 size={14} />
+                                <Trash2 size={16} />
                               </button>
                             )}
                           </div>
@@ -1714,38 +1713,38 @@ export const Modals = ({
                   </div>
                 )}
               </div>
-              <div className="p-6 sm:p-8 border-t border-border bg-surface-hover/30 flex gap-4 sticky bottom-0 bg-background/80 backdrop-blur-xl z-20 shrink-0">
+              <div className="p-4 sm:p-6 border-t border-border bg-surface-hover/30 flex items-center gap-2 sm:gap-4 sticky bottom-0 bg-background/80 backdrop-blur-xl z-20 shrink-0">
                 {canDelete && handleDeleteChecklist && (
                   <button 
                     onClick={() => {
                       handleDeleteChecklist(selectedChecklist.id);
                       setShowDetailsModal(false);
                     }}
-                    className="p-4 bg-rose-500/10 text-rose-500 hover:bg-rose-500/20 rounded-2xl transition-all border border-rose-500/20 active:scale-95"
+                    className="p-3.5 sm:p-4 bg-rose-500/10 text-rose-500 hover:bg-rose-500/20 rounded-2xl transition-all border border-rose-500/20 active:scale-95 shrink-0"
                     title="Excluir Processo"
                   >
-                    <Trash2 size={20} />
+                    <Trash2 size={18} />
                   </button>
                 )}
                 <button 
                   onClick={() => setShowDetailsModal(false)} 
-                  className="flex-1 py-4 px-6 rounded-2xl font-black uppercase tracking-widest text-[10px] sm:text-xs text-text-secondary bg-surface border border-border hover:bg-surface-hover transition-all active:scale-95 shadow-inner"
+                  className="flex-1 py-3.5 sm:py-4 px-3 sm:px-6 rounded-2xl font-black uppercase tracking-widest text-[10px] sm:text-xs text-text-secondary bg-surface border border-border hover:bg-surface-hover transition-all active:scale-95 shadow-inner"
                 >
                   Fechar
                 </button>
                 <button 
                   onClick={() => generateChecklistPDF(selectedChecklist, systemSettings)}
-                  className="flex-1 bg-surface border border-border hover:bg-surface-hover text-text-primary py-4 px-6 rounded-2xl font-black uppercase tracking-widest text-[10px] sm:text-xs flex items-center justify-center gap-2 transition-all active:scale-95"
+                  className="flex-1 bg-surface border border-border hover:bg-surface-hover text-text-primary py-3.5 sm:py-4 px-3 sm:px-6 rounded-2xl font-black uppercase tracking-widest text-[10px] sm:text-xs flex items-center justify-center gap-1.5 sm:gap-2 transition-all active:scale-95"
                 >
-                  <Printer size={18} /> Imprimir
+                  <Printer size={16} /> <span className="hidden sm:inline">Imprimir</span>
                 </button>
                 <div className="relative flex-1">
                   <button 
                     onClick={handleShare}
-                    className="w-full bg-primary hover:bg-primary/90 text-white py-4 px-6 rounded-2xl font-black uppercase tracking-widest text-[10px] sm:text-xs flex items-center justify-center gap-2 transition-all shadow-xl shadow-primary/20 active:scale-95"
+                    className="w-full bg-primary hover:bg-primary/90 text-white py-3.5 sm:py-4 px-3 sm:px-6 rounded-2xl font-black uppercase tracking-widest text-[10px] sm:text-xs flex items-center justify-center gap-1.5 sm:gap-2 transition-all shadow-xl shadow-primary/20 active:scale-95"
                   >
-                    <Share2 size={18} /> 
-                    <span className="hidden xs:inline">Compartilhar</span>
+                    <Share2 size={16} /> 
+                    <span>Compartilhar</span>
                   </button>
                   <AnimatePresence>
                     {sharedId === selectedChecklist.id && (

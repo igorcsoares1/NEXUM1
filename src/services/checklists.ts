@@ -1,7 +1,9 @@
 import { format } from 'date-fns';
 import { supabase } from '../lib/supabase';
-import { ChecklistItem, User, ChecklistConfirmation } from '../types';
+import { ChecklistItem, User, ChecklistConfirmation, Contract } from '../types';
 import { parseCurrencyToNumber, formatCurrency } from '../utils/format';
+import { getContractTotalValue } from './contracts';
+import { markRecibosByProcessNumberAsDeleted } from './recibos';
 
 const handleError = (error: any, ctx: string) => console.error(`Erro em ${ctx}:`, error?.message);
 
@@ -16,7 +18,7 @@ export const updateContractConsumption = async (contractNumber: string, valueCha
     
     let query = supabase
       .from('contracts')
-      .select('id, number, consumption, totalValue, prefeituraId');
+      .select('id, number, consumption, totalValue, prefeituraId, addendums');
 
     if (prefeituraId) {
       query = query.eq('prefeituraId', prefeituraId);
@@ -30,7 +32,7 @@ export const updateContractConsumption = async (contractNumber: string, valueCha
       console.log(`🔎 Tentando busca flexível para: %${stripped}%`);
       const { data: fuzzyContract, error: fuzzyError } = await supabase
         .from('contracts')
-        .select('id, number, consumption, totalValue, prefeituraId')
+        .select('id, number, consumption, totalValue, prefeituraId, addendums')
         .eq('prefeituraId', prefeituraId)
         .ilike('number', `%${stripped}%`)
         .maybeSingle(); // Se houver múltiplos, maybeSingle retornará erro, o que é seguro
@@ -49,7 +51,7 @@ export const updateContractConsumption = async (contractNumber: string, valueCha
 
     if (contract) {
       const currentConsumption = parseCurrencyToNumber(contract.consumption || '0');
-      const totalValue = parseCurrencyToNumber(contract.totalValue || '0');
+      const totalValue = getContractTotalValue(contract as Contract);
       
       let newConsumption = currentConsumption + valueChange;
       if (totalValue > 0) {
@@ -419,12 +421,9 @@ export const handleBulkDeleteChecklists = async (
           }
         }
 
-        // Deletar recibos digitais
+        // Deletar recibos digitais com persistência
         if (checklist.processNumber) {
-          await supabase
-            .from('recibos_digitais')
-            .delete()
-            .eq('processo_numero', checklist.processNumber);
+          await markRecibosByProcessNumberAsDeleted(checklist.processNumber);
         }
       }
 
@@ -571,6 +570,17 @@ export const fetchChecklistConfirmations = async (checklistId: string): Promise<
 
 export const deleteChecklistConfirmation = async (id: string): Promise<boolean> => {
   try {
+    try {
+      const raw = localStorage.getItem('nexum_deleted_confirmations_ids');
+      const list: string[] = raw ? JSON.parse(raw) : [];
+      if (!list.includes(id)) {
+        list.push(id);
+        localStorage.setItem('nexum_deleted_confirmations_ids', JSON.stringify(list));
+      }
+    } catch (e) {
+      console.warn('Erro ao salvar confirmação excluída:', e);
+    }
+
     const { error } = await supabase
       .from('checklist_confirmacoes')
       .delete()

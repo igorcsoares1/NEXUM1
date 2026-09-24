@@ -139,7 +139,7 @@ const Servidores = ({
           </div>
 
           {/* Desktop Table */}
-          <div className="hidden xl:block overflow-hidden bg-surface border border-border rounded-3xl shadow-sm">
+          <div className="hidden lg:block overflow-hidden bg-surface border border-border rounded-3xl shadow-sm">
             <table className="w-full text-left">
               <thead>
                 <tr className="bg-surface-hover/50 text-[10px] font-black uppercase tracking-widest text-text-secondary border-b border-border">
@@ -181,11 +181,13 @@ const Servidores = ({
           </div>
 
           {/* Mobile Cards */}
-          <div className="xl:hidden space-y-3">
+          <div className="lg:hidden space-y-3">
             {paginatedServidores.map((servidor) => (
               <div 
                 key={servidor.id} 
-                className="bg-surface border border-border rounded-3xl p-5 shadow-sm space-y-4 cursor-pointer active:scale-[0.98] transition-all"
+                role="button"
+                tabIndex={0}
+                className="bg-surface border border-border rounded-3xl p-5 shadow-sm space-y-4 cursor-pointer active:scale-[0.98] transition-all touch-manipulation select-none"
                 onClick={() => isAdmin && handleEditServidor(servidor)}
               >
                 <div className="flex items-center gap-3">

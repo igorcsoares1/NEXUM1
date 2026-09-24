@@ -373,7 +373,7 @@ export default function ChecklistPublico() {
                   <button 
                     type="submit"
                     disabled={isSubmitting || !nome.trim()}
-                    className="w-full bg-primary text-white rounded-xl py-4 font-bold flex items-center justify-center gap-2 hover:opacity-90 disabled:opacity-50 transition-all shadow-lg shadow-primary/20"
+                    className="w-full bg-primary text-white rounded-xl py-4 font-bold flex items-center justify-center gap-2 hover:opacity-90 active:scale-[0.98] disabled:opacity-50 transition-all shadow-lg shadow-primary/20 touch-manipulation cursor-pointer"
                   >
                     {isSubmitting ? (
                       <>

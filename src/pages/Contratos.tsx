@@ -6,7 +6,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { format, parseISO, differenceInDays } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { cn } from '../lib/utils';
-import { formatCurrency, parseCurrencyToNumber } from '../utils/format';
+import { formatCurrency, parseCurrencyToNumber, safeFormatDate, safeGetDaysRemaining } from '../utils/format';
 import { Contract, User } from '../types';
 import { PaginationControls } from '../components/ui/PaginationControls';
 import { PrintHeader } from '../components/ui/PrintHeader';
@@ -107,11 +107,11 @@ interface ContratosProps {
   const parseCurrency = (val: string | undefined) => parseCurrencyToNumber(val);
 
   return (
-    <div className="flex flex-col flex-1 overflow-hidden" id="contract-content">
+    <div className="flex flex-col flex-1" id="contract-content">
       <PrintHeader title="Gestão de Contratos" />
 
       {/* ── MOBILE LAYOUT ─────────────────────────────────── */}
-      <div className="flex flex-col xl:hidden flex-1 overflow-y-auto bg-background pb-20">
+      <div className="flex flex-col lg:hidden min-h-full bg-background pb-20">
         
         {/* Sticky Top Bar */}
         <div className="sticky top-0 z-30 bg-background/95 backdrop-blur-md border-b border-border/60 px-4 pt-4 pb-3 print:hidden">
@@ -277,134 +277,153 @@ interface ContratosProps {
           </div>
 
           {/* Feed List */}
-            <div className="p-4 space-y-4">
-          {filteredContracts.map((contract, idx) => {
-            const statusCfg = getStatusConfig(contract.status);
-            const daysRemaining = differenceInDays(parseISO(contract.expiryDate), new Date());
-            const consumptionValue = parseCurrency(contract.consumption);
-            const totalValue = parseCurrency(contract.totalValue);
-            const consumptionPercentage = totalValue > 0 ? (consumptionValue / totalValue) * 100 : 0;
-            const isHighConsumption = consumptionPercentage > 90;
+          <div className="p-4 space-y-4">
+            {paginatedContracts.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-16 text-text-secondary/40 text-center">
+                <FileText size={48} className="mb-3 opacity-20" />
+                <p className="text-base font-bold text-text-primary">Nenhum contrato encontrado</p>
+                <p className="text-xs text-text-secondary mt-1">Tente ajustar seus filtros ou termos de busca.</p>
+              </div>
+            ) : (
+              paginatedContracts.map((contract) => {
+                const statusCfg = getStatusConfig(contract.status);
+                const daysRemaining = safeGetDaysRemaining(contract.expiryDate);
+                const consumptionValue = parseCurrency(contract.consumption);
+                const totalValue = parseCurrency(contract.totalValue);
+                const consumptionPercentage = totalValue > 0 ? (consumptionValue / totalValue) * 100 : 0;
+                const isHighConsumption = consumptionPercentage > 90;
 
-            return (
-              <motion.div
-                initial={{ opacity: 0, scale: 0.95 }}
-                animate={{ opacity: 1, scale: 1 }}
-                transition={{ delay: idx * 0.05 }}
-                key={`mobile-contract-${contract.id}`}
-                onClick={() => handleEditContract(contract)}
-                className="bg-surface border border-border/80 rounded-[32px] p-6 shadow-sm active:scale-[0.98] transition-all relative overflow-hidden"
-              >
-                {/* Status Badge Overlays */}
-                <div className="flex justify-between items-start mb-4">
-                  <div className="flex items-center gap-3">
-                    <div className={cn("w-12 h-12 rounded-2xl flex items-center justify-center shadow-inner", statusCfg.avatarBg)}>
-                      <FileText className={statusCfg.avatarText} size={24} />
+                return (
+                  <div
+                    key={`mobile-contract-${contract.id}`}
+                    onClick={() => handleEditContract(contract)}
+                    className="bg-surface border border-border/80 rounded-[28px] p-5 shadow-sm active:scale-[0.98] transition-all relative overflow-hidden touch-manipulation cursor-pointer"
+                  >
+                    {/* Status Badge Overlays */}
+                    <div className="flex justify-between items-start mb-3">
+                      <div className="flex items-center gap-3">
+                        <div className={cn("w-11 h-11 rounded-2xl flex items-center justify-center shadow-inner", statusCfg.avatarBg)}>
+                          <FileText className={statusCfg.avatarText} size={22} />
+                        </div>
+                        <div>
+                          <h3 className="text-base font-black tracking-tight leading-tight">{contract.number}</h3>
+                          <p className="text-[10px] font-bold text-text-secondary uppercase tracking-widest mt-0.5 truncate max-w-[150px]">
+                            {contract.vendor}
+                          </p>
+                        </div>
+                      </div>
+                      <div className={cn("px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-widest", statusCfg.color)}>
+                        {statusCfg.text}
+                      </div>
                     </div>
-                    <div>
-                      <h3 className="text-base font-black tracking-tight leading-tight">{contract.number}</h3>
-                      <p className="text-[10px] font-bold text-text-secondary uppercase tracking-widest mt-1 truncate max-w-[150px]">
-                        {contract.vendor}
+
+                    {/* Object and Modality */}
+                    <div className="mb-4">
+                      <p className="text-xs text-text-secondary leading-relaxed line-clamp-2 mb-2">
+                        {contract.object}
                       </p>
+                      {contract.secretariat && (
+                        <span className="text-[9px] font-black text-primary uppercase tracking-widest bg-primary/5 px-2 py-1 rounded-lg">
+                          {contract.secretariat}
+                        </span>
+                      )}
                     </div>
-                  </div>
-                  <div className={cn("px-3 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest", statusCfg.color)}>
-                    {statusCfg.text}
-                  </div>
-                </div>
 
-                {/* Object and Modality */}
-                <div className="mb-5">
-                  <p className="text-xs text-text-secondary leading-relaxed line-clamp-2 mb-2">
-                    {contract.object}
-                  </p>
-                  {contract.secretariat && (
-                    <span className="text-[9px] font-black text-primary uppercase tracking-widest bg-primary/5 px-2 py-1 rounded-lg">
-                      {contract.secretariat}
-                    </span>
-                  )}
-                </div>
-
-                {/* Consumption Progress */}
-                {totalValue > 0 && (
-                  <div className="bg-surface-hover/50 rounded-2xl p-4 border border-border/50 mb-4">
-                    <div className="flex justify-between items-end mb-2">
-                       <span className="text-[10px] font-black text-text-secondary uppercase tracking-widest">Execução Financeira</span>
-                       <div className="flex flex-col items-end">
-                         <span className={cn("text-xs font-black", isHighConsumption ? "text-rose-500" : "text-primary")}>
-                           {consumptionPercentage.toFixed(1)}%
-                         </span>
-                         <span className="text-[9px] font-bold text-emerald-500 uppercase">Saldo: {formatCurrency(totalValue - consumptionValue)}</span>
-                       </div>
-                    </div>
-                    <div className="w-full h-2 bg-background rounded-full overflow-hidden border border-border/40">
-                      <motion.div 
-                        initial={{ width: 0 }}
-                        animate={{ width: `${Math.min(100, consumptionPercentage)}%` }}
-                        className={cn("h-full rounded-full", isHighConsumption ? "bg-rose-500" : "bg-primary")}
-                      />
-                    </div>
-                    <div className="flex justify-between mt-2">
-                      <p className="text-[10px] font-bold text-text-secondary">{formatCurrency(parseCurrencyToNumber(contract.consumption))}</p>
-                      <p className="text-[10px] font-bold text-text-secondary opacity-40">de {formatCurrency(parseCurrencyToNumber(contract.totalValue))}</p>
-                    </div>
-                  </div>
-                )}
-
-                {/* Dates & Actions */}
-                <div className="flex items-center justify-between pt-2 border-t border-border/40 mt-2">
-                  <div className="flex items-center gap-2 text-text-secondary">
-                    <Clock size={14} />
-                    <span className={cn(
-                      "text-[11px] font-bold",
-                      daysRemaining < 30 ? "text-rose-500" : "text-text-secondary"
-                    )}>
-                      Vence: {format(parseISO(contract.expiryDate), 'dd/MM/yyyy')}
-                    </span>
-                  </div>
-                  <div className="flex gap-2">
-                    {canEdit && (
-                      <button 
-                        onClick={(e) => { e.stopPropagation(); handleEditContract(contract); }}
-                        className="w-10 h-10 flex items-center justify-center bg-surface-hover hover:bg-border rounded-xl text-text-primary transition-all active:scale-90"
-                      >
-                        <Settings size={18} />
-                      </button>
+                    {/* Consumption Progress */}
+                    {totalValue > 0 && (
+                      <div className="bg-surface-hover/50 rounded-2xl p-3.5 border border-border/50 mb-3.5">
+                        <div className="flex justify-between items-end mb-1.5">
+                           <span className="text-[10px] font-black text-text-secondary uppercase tracking-widest">Execução Financeira</span>
+                           <div className="flex flex-col items-end">
+                             <span className={cn("text-xs font-black", isHighConsumption ? "text-rose-500" : "text-primary")}>
+                               {consumptionPercentage.toFixed(1)}%
+                             </span>
+                             <span className="text-[9px] font-bold text-emerald-500 uppercase">Saldo: {formatCurrency(totalValue - consumptionValue)}</span>
+                           </div>
+                        </div>
+                        <div className="w-full h-2 bg-background rounded-full overflow-hidden border border-border/40">
+                          <div 
+                            className={cn("h-full rounded-full transition-all duration-300", isHighConsumption ? "bg-rose-500" : "bg-primary")}
+                            style={{ width: `${Math.min(100, consumptionPercentage)}%` }}
+                          />
+                        </div>
+                        <div className="flex justify-between mt-1.5">
+                          <p className="text-[10px] font-bold text-text-secondary">{formatCurrency(parseCurrencyToNumber(contract.consumption))}</p>
+                          <p className="text-[10px] font-bold text-text-secondary opacity-40">de {formatCurrency(parseCurrencyToNumber(contract.totalValue))}</p>
+                        </div>
+                      </div>
                     )}
-                    {canDelete && (
-                      <button 
-                        onClick={(e) => { e.stopPropagation(); handleDeleteContract(contract.id); }}
-                        className="w-10 h-10 flex items-center justify-center bg-rose-500/10 text-rose-500 rounded-xl transition-all active:scale-90"
-                      >
-                        <Trash2 size={18} />
-                      </button>
-                    )}
-                  </div>
-                </div>
-              </motion.div>
-            );
-          })}
-        </div>
 
-        {/* Mobile Actions Drawer (Hidden by default, triggered by FAB/Menu) */}
-        {canAdd && (
-          <motion.button
-            whileHover={{ scale: 1.1 }}
-            whileTap={{ scale: 0.9 }}
-            onClick={() => {
-              setEditingContract(null);
-              setNewContractData({ prefeituraId: currentUser.prefeituraId || '1', number: '', vendor: '', object: '', validity: '', expiryDate: '', consumption: '', totalValue: '', isAditivado: false, status: 'vigente', secretariat: '', modality: '', signatureDate: '', category: '', addendums: [] });
-              setShowNewContractModal(true);
-            }}
-            className="fixed bottom-6 right-6 w-16 h-16 bg-primary text-white rounded-full shadow-2xl flex items-center justify-center z-40 shadow-primary/40 border-4 border-background"
-          >
-            <Plus size={24} />
-          </motion.button>
+                    {/* Dates & Actions */}
+                    <div className="flex items-center justify-between pt-2.5 border-t border-border/40 mt-1">
+                      <div className="flex items-center gap-1.5 text-text-secondary">
+                        <Clock size={14} />
+                        <span className={cn(
+                          "text-[11px] font-bold",
+                          daysRemaining < 30 ? "text-rose-500" : "text-text-secondary"
+                        )}>
+                          Vence: {safeFormatDate(contract.expiryDate)}
+                        </span>
+                      </div>
+                      <div className="flex gap-2">
+                        {canEdit && (
+                          <button 
+                            onClick={(e) => { e.stopPropagation(); handleEditContract(contract); }}
+                            className="w-9 h-9 flex items-center justify-center bg-surface-hover hover:bg-border rounded-xl text-text-primary transition-all active:scale-90 touch-manipulation"
+                          >
+                            <Settings size={16} />
+                          </button>
+                        )}
+                        {canDelete && (
+                          <button 
+                            onClick={(e) => { e.stopPropagation(); handleDeleteContract(contract.id); }}
+                            className="w-9 h-9 flex items-center justify-center bg-rose-500/10 text-rose-500 rounded-xl transition-all active:scale-90 touch-manipulation"
+                          >
+                            <Trash2 size={16} />
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })
+            )}
+          </div>
+
+          {/* Pagination Controls for Mobile */}
+          <div className="px-4 py-4 border-t border-border/60 print:hidden">
+            <PaginationControls
+              currentPage={contractsPage}
+              totalPages={Math.ceil(filteredContracts.length / contractsPerPage)}
+              onPageChange={setContractsPage}
+              itemsPerPage={contractsPerPage}
+              onItemsPerPageChange={(val) => {
+                setContractsPerPage(val);
+                setContractsPage(1);
+              }}
+              totalItems={filteredContracts.length}
+              showingItems={paginatedContracts.length}
+              label="contratos"
+            />
+          </div>
+
+          {/* Mobile FAB */}
+          {canAdd && (
+            <button
+              onClick={() => {
+                setEditingContract(null);
+                setNewContractData({ prefeituraId: currentUser.prefeituraId || '1', number: '', vendor: '', object: '', validity: '', expiryDate: '', consumption: '', totalValue: '', isAditivado: false, status: 'vigente', secretariat: '', modality: '', signatureDate: '', category: '', addendums: [] });
+                setShowNewContractModal(true);
+              }}
+              className="fixed bottom-24 right-5 sm:right-6 w-14 h-14 bg-primary text-white rounded-full shadow-2xl flex items-center justify-center z-50 shadow-primary/40 border-2 border-background touch-manipulation active:scale-95 transition-all"
+            >
+              <Plus size={26} strokeWidth={2.5} />
+            </button>
           )}
       </div>
 
       {/* ── DESKTOP LAYOUT ────────────────────────────────── */}
-      <div className="hidden xl:flex flex-col flex-1 p-8 overflow-y-auto">
+      <div className="hidden lg:flex flex-col flex-1 p-6 lg:p-8 overflow-y-auto">
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-8">
           <div>
             <h2 className="text-3xl font-black tracking-tight">Gestão de Contratos</h2>
@@ -596,7 +615,7 @@ interface ContratosProps {
                     </td>
                     <td className="px-6 py-5">
                       <div className="flex flex-col gap-0.5">
-                        <p className="text-xs font-bold">{format(parseISO(contract.expiryDate), 'dd/MM/yyyy')}</p>
+                        <p className="text-xs font-bold">{safeFormatDate(contract.expiryDate)}</p>
                         <p className="text-[10px] text-text-secondary uppercase font-bold">{contract.validity}</p>
                       </div>
                     </td>

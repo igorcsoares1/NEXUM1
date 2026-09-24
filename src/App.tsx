@@ -119,6 +119,7 @@ import * as checklistService from './services/checklists';
 import * as userService from './services/users';
 import * as servidorService from './services/servidores';
 import * as settingsService from './services/settings';
+import { markRecibosByProcessNumberAsDeleted } from './services/recibos';
 
 // Utils
 import { handleExportCSV } from './utils/csv';
@@ -1281,12 +1282,9 @@ export default function App() {
             }
           }
 
-          // 2. Delete associated digital receipts (linked by process number)
+          // 2. Delete associated digital receipts with persistent deletion
           if (checklist.processNumber) {
-            await supabase
-              .from('recibos_digitais')
-              .delete()
-              .eq('processo_numero', checklist.processNumber);
+            await markRecibosByProcessNumberAsDeleted(checklist.processNumber);
           }
         }
 
@@ -1540,10 +1538,7 @@ export default function App() {
   const contractStats = useMemo(() => {
     const totalValueInForce = baseFilteredContracts
       .filter(c => c.status === 'vigente' || c.status === 'atencao' || c.status === 'aditivado')
-      .reduce((acc, c) => {
-        const val = parseFloat((c.totalValue || '0').replace(/[R$\s.]/g, '').replace(',', '.'));
-        return acc + val;
-      }, 0);
+      .reduce((acc, c) => acc + contractService.getContractTotalValue(c), 0);
 
     return {
       total: baseFilteredContracts.length,
@@ -1570,8 +1565,8 @@ export default function App() {
         return days > 60 && days <= 90;
       }).length,
       consumo90: baseFilteredContracts.filter(c => {
-        const cons = parseFloat((c.consumption || '0').replace(/[R$\s.]/g, '').replace(',', '.'));
-        const total = parseFloat((c.totalValue || '0').replace(/[R$\s.]/g, '').replace(',', '.'));
+        const cons = parseCurrencyToNumber(c.consumption || '0');
+        const total = contractService.getContractTotalValue(c);
         return total > 0 && (cons / total) > 0.9;
       }).length,
       totalValueInForce
@@ -1710,7 +1705,6 @@ export default function App() {
       setNewItemLabel={setNewItemLabel}
       handleAddItem={handleAddItem}
       handleRemoveItem={handleRemoveItem}
-      contracts={contracts}
       servidores={servidores}
       canDelete={canDelete}
       handleDeleteDaily={handleDeleteDaily}
@@ -2269,14 +2263,15 @@ export default function App() {
         </header>
 
         {/* View Content */}
-        <div className="flex-1 overflow-y-auto p-8">
-          <AnimatePresence mode="wait">
+        <div className="flex-1 overflow-y-auto p-3.5 sm:p-6 lg:p-8 pb-28 lg:pb-8">
+          <AnimatePresence mode="popLayout">
             <motion.div
               key={activeView}
-              initial={{ opacity: 0, y: 10 }}
+              initial={{ opacity: 0, y: 4 }}
               animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -10 }}
-              transition={{ duration: 0.2 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.12 }}
+              className="min-h-full"
             >
               {renderView()}
             </motion.div>

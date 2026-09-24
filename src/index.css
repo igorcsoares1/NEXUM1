@@ -32,13 +32,17 @@
     -webkit-overflow-scrolling: touch;
   }
 
-  /* Touch targets mínimos de 44px */
+  /* Mobile tap otimizado sem 300ms delay */
   button, a, [role="button"] {
-    min-height: 44px;
-    min-width: 44px;
     touch-action: manipulation;
     -webkit-tap-highlight-color: transparent;
     cursor: pointer;
+  }
+
+  /* Previne seleção acidental de texto durante toques em botões e barras de navegação */
+  button, [role="button"], nav, header {
+    -webkit-user-select: none;
+    user-select: none;
   }
 
   /* Tabelas com scroll horizontal no mobile */
@@ -55,6 +59,19 @@
       white-space: normal;
     }
   }
+}
+
+/* Safe areas para iPhone e Android moderno com gestos */
+.bottom-nav-safe {
+  padding-bottom: max(0.5rem, calc(env(safe-area-inset-bottom, 0px) + 0.25rem));
+}
+
+.pb-safe {
+  padding-bottom: max(1rem, env(safe-area-inset-bottom, 0px));
+}
+
+.pt-safe {
+  padding-top: max(1rem, env(safe-area-inset-top, 0px));
 }
 
 /* Modern Button Utilities */

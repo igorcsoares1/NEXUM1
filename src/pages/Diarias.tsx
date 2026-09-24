@@ -29,7 +29,8 @@ import { StatCard } from '../components/ui/StatCard';
 import { PrintHeader } from '../components/ui/PrintHeader';
 import Servidores from './Servidores';
 import { syncServidoresFromDiarias } from '../services/daily';
-import { formatCurrency, parseCurrencyToNumber } from '../utils/format';
+import { PaginationControls } from '../components/ui/PaginationControls';
+import { formatCurrency, parseCurrencyToNumber, safeFormatDate } from '../utils/format';
 
 interface DiariasProps {
   currentUser: User;
@@ -98,6 +99,10 @@ const Diarias = ({
   handleRejectDaily,
   servidorStats,
   servidores,
+  dailyPage,
+  setDailyPage,
+  dailyPerPage,
+  setDailyPerPage,
   handleEditServidor,
   handleDeleteServidor,
   setShowNewServidorModal,
@@ -203,11 +208,11 @@ const Diarias = ({
   };
 
   return (
-    <div className="flex flex-col flex-1 overflow-hidden" id="daily-content">
+    <div className="flex flex-col flex-1" id="daily-content">
       <PrintHeader title="Controle de Diárias" />
 
       {/* ── MOBILE LAYOUT ─────────────────────────────────── */}
-      <div className="flex flex-col xl:hidden flex-1 overflow-y-auto bg-background pb-20">
+      <div className="flex flex-col lg:hidden min-h-full bg-background pb-20">
         
         {/* Sticky Top Bar */}
         <div className="sticky top-0 z-30 bg-background/95 backdrop-blur-md border-b border-border/60 px-4 pt-4 pb-3 print:hidden">
@@ -256,7 +261,7 @@ const Diarias = ({
 
         {/* Feed List */}
         <div className="p-4 space-y-4">
-          {filteredDailyRecords.length === 0 ? (
+          {paginatedDailyRecords.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-20 text-text-secondary/40">
               <div className="w-20 h-20 rounded-full bg-surface border border-border border-dashed flex items-center justify-center mb-4">
                 <Calendar size={32} />
@@ -265,17 +270,14 @@ const Diarias = ({
               <p className="text-xs">Tente ajustar seus filtros de busca</p>
             </div>
           ) : (
-            filteredDailyRecords.map((record, idx) => {
+            paginatedDailyRecords.map((record) => {
               const statusCfg = getStatusConfig(record.status);
               return (
-                <motion.div
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: idx * 0.05 }}
+                <div
                   key={`mobile-daily-${record.id}`}
                   onClick={() => handleEditDaily(record)}
                   className={cn(
-                    "relative group bg-surface border border-border/80 rounded-[28px] p-5 shadow-sm active:scale-[0.98] transition-all",
+                    "relative group bg-surface border border-border/80 rounded-[28px] p-5 shadow-sm active:scale-[0.98] transition-all touch-manipulation cursor-pointer",
                     selectedDailyIds.includes(record.id) && "ring-2 ring-primary border-primary/20 bg-primary/5"
                   )}
                 >
@@ -306,7 +308,7 @@ const Diarias = ({
                           <UserCircle size={16} />
                         </div>
                         <div>
-                          <p className="text-[9px] uppercase font-black tracking-wider opacity-50">BENEFICIARY</p>
+                          <p className="text-[9px] uppercase font-black tracking-wider opacity-50">BENEFICIÁRIO</p>
                           <p className="text-xs font-bold leading-none">{record.beneficiary ?? record.driver}</p>
                           {(() => {
                             const servant = servidores.find(s => 
@@ -337,7 +339,7 @@ const Diarias = ({
                     <div className="flex items-center gap-4 py-3 px-4 bg-surface-hover/50 rounded-2xl border border-border/50">
                       <div className="flex items-center gap-2">
                         <Clock size={14} className="text-text-secondary" />
-                        <span className="text-xs font-bold">{format(parseISO(record.date), 'dd/MM/yyyy')}</span>
+                        <span className="text-xs font-bold">{safeFormatDate(record.date)}</span>
                       </div>
                       <div className="w-px h-3 bg-border/60"></div>
                       <div className="text-[10px] font-bold text-text-secondary truncate">
@@ -352,14 +354,14 @@ const Diarias = ({
                       <>
                         <button 
                           onClick={(e) => { e.stopPropagation(); handleApproveDaily(record); }}
-                          className="flex-1 bg-emerald-500/10 text-emerald-500 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all active:scale-95 flex items-center justify-center gap-2 border border-emerald-500/20"
+                          className="flex-1 bg-emerald-500/10 text-emerald-500 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all active:scale-95 flex items-center justify-center gap-2 border border-emerald-500/20 touch-manipulation"
                         >
                           <Check size={14} />
                           Aprovar
                         </button>
                         <button 
                           onClick={(e) => { e.stopPropagation(); handleRejectDaily(record); }}
-                          className="flex-1 bg-rose-500/10 text-rose-500 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all active:scale-95 flex items-center justify-center gap-2 border border-rose-500/20"
+                          className="flex-1 bg-rose-500/10 text-rose-500 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all active:scale-95 flex items-center justify-center gap-2 border border-rose-500/20 touch-manipulation"
                         >
                           <X size={14} />
                           Rejeitar
@@ -373,7 +375,7 @@ const Diarias = ({
                         navigator.clipboard.writeText(url);
                         addNotification("Sucesso", "Link público da diária copiado!", "success");
                       }}
-                      className="flex-1 bg-primary/10 text-primary py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all active:scale-95 flex items-center justify-center gap-2 border border-primary/20"
+                      className="flex-1 bg-primary/10 text-primary py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all active:scale-95 flex items-center justify-center gap-2 border border-primary/20 touch-manipulation"
                     >
                       <LinkIcon size={14} />
                       Link
@@ -383,10 +385,10 @@ const Diarias = ({
                         e.stopPropagation();
                         handleEditDaily(record);
                       }}
-                      className="flex-1 bg-surface-hover hover:bg-border text-text-primary py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all active:scale-95 flex items-center justify-center gap-2 border border-border/60"
+                      className="flex-1 bg-surface-hover hover:bg-border text-text-primary py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all active:scale-95 flex items-center justify-center gap-2 border border-border/60 touch-manipulation"
                     >
                       <Settings size={14} />
-                      {record.status === 'pendente' ? 'Ver' : 'Ver Detalhes'}
+                      {record.status === 'pendente' ? 'Ver' : 'Detalhes'}
                     </button>
                     {canDelete && (
                       <button 
@@ -394,7 +396,7 @@ const Diarias = ({
                           e.stopPropagation();
                           handleDeleteDaily(record.id);
                         }}
-                        className="w-12 h-12 flex items-center justify-center bg-rose-500/10 text-rose-500 border border-rose-500/20 rounded-2xl active:scale-95 transition-all"
+                        className="w-12 h-12 flex items-center justify-center bg-rose-500/10 text-rose-500 border border-rose-500/20 rounded-2xl active:scale-95 transition-all touch-manipulation"
                       >
                         <Trash2 size={18} />
                       </button>
@@ -415,42 +417,56 @@ const Diarias = ({
                       }}
                     />
                   )}
-                </motion.div>
+                </div>
               );
             })
           )}
         </div>
 
+        {/* Mobile Pagination */}
+        <div className="px-4 py-4 border-t border-border/60 print:hidden">
+          <PaginationControls
+            currentPage={dailyPage}
+            totalPages={Math.ceil(filteredDailyRecords.length / dailyPerPage)}
+            onPageChange={setDailyPage}
+            itemsPerPage={dailyPerPage}
+            onItemsPerPageChange={(val) => {
+              setDailyPerPage(val);
+              setDailyPage(1);
+            }}
+            totalItems={filteredDailyRecords.length}
+            showingItems={paginatedDailyRecords.length}
+            label="diárias"
+          />
+        </div>
+
         {/* Floating Action Button (FAB) */}
         {canAdd && (
-          <motion.button
-            whileHover={{ scale: 1.05 }}
-            whileTap={{ scale: 0.95 }}
+          <button
             onClick={() => {
               setEditingDaily(null);
-              // ✅ Alinhe com o que o formulário usa
-setNewDailyData({
-  prefeituraId: currentUser.prefeituraId || '1',
-  beneficiary: '',
-  registrationNumber: '',
-  destination: '',
-  departureDate: new Date().toISOString().split('T')[0],
-  returnDate: '',
-  purpose: '',
-  value: '',
-  status: 'pendente'
-});
+              setNewDailyData({
+                prefeituraId: currentUser.prefeituraId || '1',
+                beneficiary: '',
+                registrationNumber: '',
+                destination: '',
+                departureDate: new Date().toISOString().split('T')[0],
+                returnDate: '',
+                purpose: '',
+                value: '',
+                status: 'pendente'
+              });
               setShowNewDailyModal(true);
             }}
-            className="fixed bottom-6 right-6 w-16 h-16 bg-primary text-white rounded-full shadow-2xl flex items-center justify-center z-40 shadow-primary/40 border-4 border-background"
+            className="fixed bottom-24 right-5 sm:right-6 w-14 h-14 bg-primary text-white rounded-full shadow-2xl flex items-center justify-center z-50 shadow-primary/40 border-2 border-background touch-manipulation active:scale-95 transition-all"
           >
-            <Plus size={32} strokeWidth={3} />
-          </motion.button>
+            <Plus size={28} strokeWidth={2.5} />
+          </button>
         )}
       </div>
 
       {/* ── DESKTOP LAYOUT ────────────────────────────────── */}
-      <div className="hidden xl:flex flex-col flex-1 p-8 overflow-y-auto">
+      <div className="hidden lg:flex flex-col flex-1 p-6 lg:p-8 overflow-y-auto">
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-8">
           <div>
             <h2 className="text-3xl font-black tracking-tight">Controle de Diárias</h2>
@@ -575,7 +591,7 @@ setNewDailyData({
                         {record.purpose ? `"${record.purpose}"` : '-'}
                       </p>
                     </td>
-                    <td className="px-6 py-5 text-sm font-medium text-text-secondary">{format(parseISO(record.date), 'dd/MM/yyyy')}</td>
+                    <td className="px-6 py-5 text-sm font-medium text-text-secondary">{safeFormatDate(record.date)}</td>
                     <td className="px-6 py-5 text-sm font-black text-primary">{formatCurrency(parseCurrencyToNumber(record.value))}</td>
                     <td className="px-6 py-5">
                       <span className={cn("px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest", statusCfg.color)}>
@@ -635,6 +651,19 @@ setNewDailyData({
               })}
             </tbody>
           </table>
+          <PaginationControls
+            currentPage={dailyPage}
+            totalPages={Math.ceil(filteredDailyRecords.length / dailyPerPage)}
+            onPageChange={setDailyPage}
+            itemsPerPage={dailyPerPage}
+            onItemsPerPageChange={(val) => {
+              setDailyPerPage(val);
+              setDailyPage(1);
+            }}
+            totalItems={filteredDailyRecords.length}
+            showingItems={paginatedDailyRecords.length}
+            label="diárias"
+          />
         </div>
 
         {/* Ranking & Servidores (Desktop Only) */}

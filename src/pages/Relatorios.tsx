@@ -59,10 +59,10 @@ const Relatorios = ({
     <div className="flex flex-col flex-1 overflow-hidden" id="report-content">
       <PrintHeader title="Relatórios e Auditoria" />
       
-      <div className="flex flex-col flex-1 overflow-y-auto no-scrollbar pb-20 xl:pb-8">
+      <div className="flex flex-col flex-1 overflow-y-auto no-scrollbar pb-24 lg:pb-8">
         
         {/* ── MOBILE LAYOUT ─────────────────────────────────── */}
-        <div className="flex flex-col xl:hidden">
+        <div className="flex flex-col lg:hidden">
           <header className="sticky top-0 z-30 bg-background/95 backdrop-blur-md border-b border-border/60 px-4 pt-6 pb-4 flex justify-between items-end print:hidden">
             <div>
               <h2 className="text-2xl font-black tracking-tighter">Relatórios</h2>
@@ -129,7 +129,7 @@ const Relatorios = ({
         </div>
 
         {/* ── DESKTOP LAYOUT ────────────────────────────────── */}
-        <div className="hidden xl:flex flex-col p-8 space-y-8 max-w-[1600px] mx-auto w-full">
+        <div className="hidden lg:flex flex-col p-8 space-y-8 max-w-[1600px] mx-auto w-full">
            <header className="flex justify-between items-end print:hidden">
             <div>
               <h1 className="text-4xl font-black tracking-tighter">Relatórios e Auditoria</h1>

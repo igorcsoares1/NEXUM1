@@ -115,10 +115,10 @@ const Dashboard = ({
 
   return (
     <div className="flex flex-col flex-1 overflow-hidden">
-      <div id="dashboard-content" className="flex flex-col flex-1 overflow-y-auto no-scrollbar pb-20 xl:pb-8">
+      <div id="dashboard-content" className="flex flex-col flex-1 overflow-y-auto no-scrollbar pb-24 lg:pb-8">
 
         {/* ── MOBILE/TABLET DASHBOARD ───────────────────────── */}
-        <div className="flex flex-col xl:hidden p-4 sm:p-6 md:p-8 space-y-6">
+        <div className="flex flex-col lg:hidden p-4 sm:p-6 md:p-8 space-y-6">
           <header className="px-1">
             <h1 className="text-2xl sm:text-3xl font-black tracking-tight">Dashboard Operacional</h1>
             <p className="text-text-secondary text-xs sm:text-sm font-medium mt-1">Gestão e indicadores municipais.</p>
@@ -254,7 +254,7 @@ const Dashboard = ({
         </div>
 
         {/* ── DESKTOP DASHBOARD ─────────────────────────────── */}
-        <div className="hidden xl:flex flex-col p-8 space-y-8 max-w-[1600px] mx-auto w-full">
+        <div className="hidden lg:flex flex-col p-8 space-y-8 max-w-[1600px] mx-auto w-full">
           <header className="flex justify-between items-end">
             <div>
               <h1 className="text-4xl font-black tracking-tighter">Dashboard Operacional</h1>

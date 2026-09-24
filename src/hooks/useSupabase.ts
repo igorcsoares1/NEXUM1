@@ -219,6 +219,16 @@ export function useSupabase({ isAuthReady, currentUser, isLoggedIn }: UseSupabas
 
     const fetchConfirmations = async () => {
       try {
+        const getDeletedConfIds = (): string[] => {
+          try {
+            const raw = localStorage.getItem('nexum_deleted_confirmations_ids');
+            return raw ? JSON.parse(raw) : [];
+          } catch {
+            return [];
+          }
+        };
+        const deletedConfIds = getDeletedConfIds();
+
         // Busca simples primeiro para evitar falha total por join
         const { data, error } = await supabase
           .from('checklist_confirmacoes')
@@ -241,14 +251,16 @@ export function useSupabase({ isAuthReady, currentUser, isLoggedIn }: UseSupabas
             .order('data_confirmacao', { ascending: false });
             
           if (!simpleError) {
-            setConfirmations(simpleData || []);
+            const filtered = (simpleData || []).filter(c => !deletedConfIds.includes(c.id));
+            setConfirmations(filtered);
           } else {
             console.warn('Erro ao carregar confirmações (simples):', simpleError.message);
             setConfirmations([]);
           }
           return;
         }
-        setConfirmations(data || []);
+        const filtered = (data || []).filter(c => !deletedConfIds.includes(c.id));
+        setConfirmations(filtered);
       } catch (e: any) {
         console.warn('Falha crítica nas confirmações:', e.message);
       }

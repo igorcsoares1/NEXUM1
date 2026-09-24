@@ -254,7 +254,7 @@ export default function DiariaPublica() {
                     <button 
                       onClick={() => handleAction('aprovado')}
                       disabled={isSubmitting}
-                      className="bg-primary text-white rounded-xl py-4 font-bold flex items-center justify-center gap-2 hover:opacity-90 disabled:opacity-50 transition-all shadow-lg shadow-primary/20"
+                      className="bg-primary text-white rounded-xl py-4 font-bold flex items-center justify-center gap-2 hover:opacity-90 active:scale-[0.98] disabled:opacity-50 transition-all shadow-lg shadow-primary/20 touch-manipulation cursor-pointer"
                     >
                       {isSubmitting && finalStatus === 'aprovado' ? (
                         <Loader2 className="w-5 h-5 animate-spin" />
@@ -267,7 +267,7 @@ export default function DiariaPublica() {
                     <button 
                       onClick={() => handleAction('rejeitado')}
                       disabled={isSubmitting}
-                      className="bg-rose-500/10 text-rose-500 border border-rose-500/20 rounded-xl py-4 font-bold flex items-center justify-center gap-2 hover:bg-rose-500/20 disabled:opacity-50 transition-all"
+                      className="bg-rose-500/10 text-rose-500 border border-rose-500/20 rounded-xl py-4 font-bold flex items-center justify-center gap-2 hover:bg-rose-500/20 active:scale-[0.98] disabled:opacity-50 transition-all touch-manipulation cursor-pointer"
                     >
                       {isSubmitting && finalStatus === 'rejeitado' ? (
                         <Loader2 className="w-5 h-5 animate-spin" />

@@ -80,10 +80,10 @@ const Usuarios = ({
 
   return (
     <div className="flex flex-col flex-1 overflow-hidden">
-      <div className="flex flex-col flex-1 overflow-y-auto no-scrollbar pb-20 xl:pb-8">
+      <div className="flex flex-col flex-1 overflow-y-auto no-scrollbar pb-24 lg:pb-8">
         
         {/* ── MOBILE LAYOUT ─────────────────────────────────── */}
-        <div className="flex flex-col xl:hidden">
+        <div className="flex flex-col lg:hidden">
           <header className="px-4 pt-6 pb-2 space-y-4">
             <div className="flex justify-between items-center">
               <div>
@@ -173,14 +173,14 @@ const Usuarios = ({
             whileHover={{ scale: 1.05 }}
             whileTap={{ scale: 0.9 }}
             onClick={handleOpenNewUser}
-            className="fixed bottom-24 right-6 w-16 h-16 bg-primary text-white rounded-2xl shadow-2xl shadow-primary/40 flex items-center justify-center z-40 transition-transform active:rotate-12"
+            className="fixed bottom-24 right-6 w-14 h-14 sm:w-16 sm:h-16 bg-primary text-white rounded-2xl shadow-2xl shadow-primary/40 flex items-center justify-center z-50 transition-transform active:rotate-12 touch-manipulation"
           >
             <Plus size={32} />
           </motion.button>
         </div>
 
         {/* ── DESKTOP LAYOUT ────────────────────────────────── */}
-        <div className="hidden xl:flex flex-col p-8 space-y-8 max-w-[1600px] mx-auto w-full">
+        <div className="hidden lg:flex flex-col p-8 space-y-8 max-w-[1600px] mx-auto w-full">
            <header className="flex justify-between items-end">
             <div>
               <h1 className="text-4xl font-black tracking-tighter">Gestão de Usuários</h1>

@@ -36,7 +36,7 @@ const Login = ({
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
-        className="glass-card w-full max-w-md relative z-10 p-10 bg-white/80 backdrop-blur-xl border-white shadow-2xl"
+        className="glass-card w-full max-w-md relative z-10 p-6 sm:p-10 bg-white/80 backdrop-blur-xl border-white shadow-2xl"
       >
 
         {/* LOGO + NOME */}
@@ -134,7 +134,7 @@ const Login = ({
           <button
             type="submit"
             disabled={isLoggingIn}
-            className="w-full bg-primary hover:bg-primary/90 disabled:bg-slate-300 text-white py-4.5 rounded-2xl font-black uppercase tracking-widest shadow-xl shadow-primary/20 transition-all flex items-center justify-center gap-2 active:scale-95"
+            className="w-full bg-primary hover:bg-primary/90 disabled:bg-slate-300 text-white py-4 sm:py-4.5 rounded-2xl font-black uppercase tracking-widest shadow-xl shadow-primary/20 transition-all flex items-center justify-center gap-2 active:scale-95 touch-manipulation cursor-pointer"
           >
             {isLoggingIn
               ? <RefreshCw size={20} className="animate-spin" />

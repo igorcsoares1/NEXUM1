@@ -6,6 +6,20 @@ const handleError = (error: any, ctx: string) => console.error(`Erro em ${ctx}:`
 
 import { parseCurrencyToNumber, formatCurrency } from '../utils/format';
 
+export const getContractTotalValue = (contract: Contract): number => {
+  const baseValue = parseCurrencyToNumber(contract.totalValue || '0');
+  const addendumsValue = (contract.addendums || []).reduce((acc, add) => {
+    return acc + parseCurrencyToNumber(add.value || '0');
+  }, 0);
+  return baseValue + addendumsValue;
+};
+
+export const getContractBalance = (contract: Contract): number => {
+  const totalValue = getContractTotalValue(contract);
+  const consumption = parseCurrencyToNumber(contract.consumption || '0');
+  return totalValue - consumption;
+};
+
 export const handleSaveContract = async (
   newContractData: Omit<Contract, 'id'>,
   editingContract: Contract | null,

@@ -102,6 +102,7 @@ const Checklists = ({
   const [localFilters, setLocalFilters] = useState(checklistFilters);
   const [selectedConfirmation, setSelectedConfirmation] = useState<any>(null);
   const [activeTab, setActiveTab] = useState<'processos' | 'recibos'>('processos');
+  const [recibosCount, setRecibosCount] = useState<number | null>(null);
 
   const handleApplyFilters = () => {
     setChecklistFilters(localFilters);
@@ -240,7 +241,7 @@ const Checklists = ({
     <div className="flex flex-col flex-1 overflow-y-auto">
       
       {/* ── MOBILE LAYOUT ─────────────────────────────────── */}
-      <div className="flex flex-col xl:hidden min-h-full bg-background">
+      <div className="flex flex-col lg:hidden min-h-full bg-background pb-20">
 
         {/* Sticky Top Bar */}
         <div className="sticky top-0 z-30 bg-background/95 backdrop-blur-md border-b border-border/60 px-4 pt-4 pb-3 print:hidden">
@@ -334,7 +335,7 @@ const Checklists = ({
               )}
             >
               <span className="text-[10px] font-black uppercase tracking-wider">Recibos</span>
-              <span className="text-xs font-black">{confirmations.length}</span>
+              <span className="text-xs font-black">{recibosCount !== null ? recibosCount : confirmations.length}</span>
             </button>
             <div className="w-4 shrink-0"></div> {/* Spacer */}
           </div>
@@ -350,8 +351,11 @@ const Checklists = ({
                   return (
                     <div
                       key={`feed-checklist-${item.id}-${idx}`}
+                      role="button"
+                      tabIndex={0}
                       onClick={() => openDetails(item)}
-                      className="w-full text-left border-b border-border/50 last:border-0 px-4 py-4 active:bg-surface-hover/70 transition-colors relative cursor-pointer"
+                      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') openDetails(item); }}
+                      className="w-full text-left border-b border-border/50 last:border-0 px-4 py-4 active:bg-surface-hover/70 transition-colors relative cursor-pointer touch-manipulation select-none"
                     >
                       <div className="flex gap-3 items-start">
                         {/* Avatar circle */}
@@ -450,26 +454,28 @@ const Checklists = ({
                 </div>
               )
             ) : (
-              <RecibosDigitaisComponent currentUser={currentUser} />
+              <RecibosDigitaisComponent currentUser={currentUser} onCountChange={setRecibosCount} />
             )}
           </div>
 
-        {/* Pagination */}
-        <div className="px-4 py-4 border-t border-border/60 print:hidden">
-          <PaginationControls
-            currentPage={checklistPage}
-            totalPages={Math.ceil(filteredChecklists.length / checklistPerPage)}
-            onPageChange={setChecklistPage}
-            itemsPerPage={checklistPerPage}
-            onItemsPerPageChange={(val) => {
-              setChecklistPerPage(val);
-              setChecklistPage(1);
-            }}
-            totalItems={filteredChecklists.length}
-            showingItems={paginatedChecklists.length}
-            label="processos"
-          />
-        </div>
+        {/* Pagination — Apenas para a aba de Processos */}
+        {activeTab === 'processos' && (
+          <div className="px-4 py-4 border-t border-border/60 print:hidden">
+            <PaginationControls
+              currentPage={checklistPage}
+              totalPages={Math.ceil(filteredChecklists.length / checklistPerPage)}
+              onPageChange={setChecklistPage}
+              itemsPerPage={checklistPerPage}
+              onItemsPerPageChange={(val) => {
+                setChecklistPerPage(val);
+                setChecklistPage(1);
+              }}
+              totalItems={filteredChecklists.length}
+              showingItems={paginatedChecklists.length}
+              label="processos"
+            />
+          </div>
+        )}
 
         {/* FAB — Floating Action Button */}
         {canAdd && (
@@ -492,7 +498,7 @@ const Checklists = ({
               });
               setShowNewChecklistModal(true);
             }}
-            className="fixed bottom-6 right-5 z-50 w-14 h-14 bg-primary text-white rounded-full shadow-2xl shadow-primary/40 flex items-center justify-center hover:scale-110 active:scale-95 transition-all animate-pulse-slow"
+            className="fixed bottom-24 right-5 z-50 w-14 h-14 bg-primary text-white rounded-full shadow-2xl shadow-primary/40 flex items-center justify-center hover:scale-110 active:scale-95 transition-all touch-manipulation"
           >
             <Plus size={26} strokeWidth={2.5} />
           </button>
@@ -500,7 +506,7 @@ const Checklists = ({
       </div>
 
       {/* ── DESKTOP LAYOUT ────────────────────────────────── */}
-      <div className="hidden xl:flex flex-col gap-6 p-8 flex-1 overflow-y-auto">
+      <div className="hidden lg:flex flex-col gap-6 p-6 lg:p-8 flex-1 overflow-y-auto">
 
         {/* Desktop Header */}
         <div className="flex justify-between items-center gap-4 print:hidden">
@@ -571,6 +577,9 @@ const Checklists = ({
             )}
           >
             Recibos Digitais
+            <span className="ml-2 px-2 py-0.5 text-xs rounded-full bg-surface border border-border font-black text-text-secondary">
+              {recibosCount !== null ? recibosCount : confirmations.length}
+            </span>
             {activeTab === 'recibos' && (
               <motion.div layoutId="activeTabDesktop" className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary rounded-full" />
             )}
@@ -779,7 +788,7 @@ const Checklists = ({
             </>
           ) : (
             <div className="p-4">
-              <RecibosDigitaisComponent currentUser={currentUser} />
+              <RecibosDigitaisComponent currentUser={currentUser} onCountChange={setRecibosCount} />
             </div>
           )}
         </div>

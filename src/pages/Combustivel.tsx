@@ -139,7 +139,7 @@ const Combustivel = ({
       <PrintHeader title="Gestão de Combustível" />
 
       {/* ── MOBILE LAYOUT ─────────────────────────────────── */}
-      <div className="flex flex-col xl:hidden flex-1 overflow-y-auto bg-background pb-20">
+      <div className="flex flex-col lg:hidden flex-1 overflow-y-auto bg-background pb-20">
 
         {/* Sticky Top Bar */}
         <div className="sticky top-0 z-30 bg-background/95 backdrop-blur-md border-b border-border/60 px-4 pt-4 pb-3 print:hidden">
@@ -320,7 +320,7 @@ const Combustivel = ({
               });
               setShowNewFuelModal(true);
             }}
-            className="fixed bottom-24 right-5 z-40 w-14 h-14 bg-primary text-white rounded-full shadow-2xl flex items-center justify-center hover:scale-110 active:scale-95 transition-all"
+            className="fixed bottom-24 right-5 z-50 w-14 h-14 bg-primary text-white rounded-full shadow-2xl flex items-center justify-center hover:scale-110 active:scale-95 transition-all touch-manipulation border-2 border-background"
             style={{ animation: 'pulse 2s infinite' }}
           >
             <Plus size={28} strokeWidth={3} />
@@ -329,7 +329,7 @@ const Combustivel = ({
       </div>
 
       {/* ── DESKTOP LAYOUT ────────────────────────────────── */}
-      <div className="hidden xl:flex flex-col gap-6 p-8 flex-1 overflow-y-auto">
+      <div className="hidden lg:flex flex-col gap-6 p-6 lg:p-8 flex-1 overflow-y-auto">
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 print:hidden">
           <div>
             <h2 className="text-xl md:text-2xl font-bold">Gestão de Combustível</h2>

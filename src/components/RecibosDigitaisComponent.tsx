@@ -18,28 +18,43 @@ import {
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '../lib/utils';
+import { 
+  Recibo, 
+  fetchActiveRecibos, 
+  markReciboAsDeleted, 
+  getLocalDeletedReciboIds 
+} from '../services/recibos';
 
-interface Recibo {
-  id: string;
-  nome_receptor: string;
-  data_hora_recebimento: string;
-  processo_numero: string;
-  fornecedor: string;
-  nota_fiscal: string;
-  documentos: string;
-  processos: string;
-  url_original: string;
-  status: string;
-  fornecedores_lista?: string[];
-}
-
-export function RecibosDigitaisComponent({ currentUser, compact = false }: { currentUser?: any, compact?: boolean }) {
+export function RecibosDigitaisComponent({ 
+  currentUser, 
+  compact = false,
+  onCountChange
+}: { 
+  currentUser?: any, 
+  compact?: boolean,
+  onCountChange?: (count: number) => void
+}) {
   const [recibos, setRecibos] = useState<Recibo[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedRecibo, setSelectedRecibo] = useState<Recibo | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = compact ? 5 : 10;
+
+  const fetchRecibos = async () => {
+    try {
+      setLoading(true);
+      const data = await fetchActiveRecibos();
+      setRecibos(data);
+      if (onCountChange) {
+        onCountChange(data.length);
+      }
+    } catch (err) {
+      console.error('Erro ao buscar recibos:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
     fetchRecibos();
@@ -49,10 +64,23 @@ export function RecibosDigitaisComponent({ currentUser, compact = false }: { cur
     const channel = supabase
       .channel(channelId)
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'recibos_digitais' }, (payload) => {
-        setRecibos(prev => [payload.new as Recibo, ...prev]);
+        const newRecibo = payload.new as Recibo;
+        const deletedIds = getLocalDeletedReciboIds();
+        if (!deletedIds.includes(newRecibo.id)) {
+          setRecibos(prev => {
+            if (prev.some(r => r.id === newRecibo.id)) return prev;
+            const updated = [newRecibo, ...prev];
+            if (onCountChange) onCountChange(updated.length);
+            return updated;
+          });
+        }
       })
       .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'recibos_digitais' }, (payload) => {
-        setRecibos(prev => prev.filter(r => r.id !== payload.old.id));
+        setRecibos(prev => {
+          const updated = prev.filter(r => r.id !== payload.old.id);
+          if (onCountChange) onCountChange(updated.length);
+          return updated;
+        });
       })
       .subscribe();
 
@@ -61,23 +89,6 @@ export function RecibosDigitaisComponent({ currentUser, compact = false }: { cur
     };
   }, []);
 
-  const fetchRecibos = async () => {
-    try {
-      setLoading(true);
-      const { data, error } = await supabase
-        .from('recibos_digitais')
-        .select('*')
-        .order('data_hora_recebimento', { ascending: false });
-
-      if (error) throw error;
-      setRecibos(data || []);
-    } catch (err) {
-      console.error('Erro ao buscar recibos:', err);
-    } finally {
-      setLoading(false);
-    }
-  };
-
   const handleDeleteRecibo = async (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
     
@@ -85,15 +96,19 @@ export function RecibosDigitaisComponent({ currentUser, compact = false }: { cur
       const confirmed = window.confirm('Tem certeza que deseja apagar este recibo?');
       if (!confirmed) return;
 
-      const { error } = await supabase
-        .from('recibos_digitais')
-        .delete()
-        .eq('id', id);
+      // Atualização imediata e otimista na interface
+      setRecibos(prev => {
+        const updated = prev.filter(r => r.id !== id);
+        if (onCountChange) onCountChange(updated.length);
+        return updated;
+      });
 
-      if (error) throw error;
-      
-      // Feedback visual imediato
-      setRecibos(prev => prev.filter(r => r.id !== id));
+      if (selectedRecibo?.id === id) {
+        setSelectedRecibo(null);
+      }
+
+      // Persistência robusta: salva nos IDs excluídos para nunca voltar no refresh
+      await markReciboAsDeleted(id);
     } catch (err: any) {
       console.error('Erro ao apagar recibo:', err);
       alert(`Falha ao apagar recibo: ${err.message || 'Verifique suas permissões.'}`);
