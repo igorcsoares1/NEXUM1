@@ -85,7 +85,10 @@ export const fleetService = {
 
     // Update vehicle status and KM if provided
     if (occurrence.frota_id && occurrence.status_resultado) {
-      const vehicleUpdates: any = { status: occurrence.status_resultado };
+      const vehicleUpdates: any = { 
+        status: occurrence.status_resultado,
+        observacao: occurrence.descricao // Update vehicle observation with status details
+      };
       if (occurrence.km) {
         vehicleUpdates.km_atual = occurrence.km;
       }

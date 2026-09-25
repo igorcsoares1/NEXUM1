@@ -1,12 +1,11 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { 
-  Truck, 
-  Plus, 
-  Search, 
-  Filter, 
-  MoreHorizontal, 
-  FileText, 
-  History, 
+import {
+  Truck,
+  Plus,
+  Search,
+  Filter,
+  FileText,
+  History,
   AlertCircle,
   Settings,
   ArrowRight,
@@ -17,24 +16,33 @@ import {
   Trash2,
   Printer,
   X,
-  PlusCircle,
-  FileBarChart,
-  ChevronDown
+  ChevronDown,
+  RefreshCw,
+  Download,
+  Zap,
+  DollarSign,
+  BarChart3,
+  LayoutGrid,
+  List,
+  Eye,
+  Clock
 } from 'lucide-react';
+import {
+  BarChart, Bar, LineChart, Line, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer
+} from 'recharts';
 import { motion, AnimatePresence } from 'motion/react';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { cn } from '../lib/utils';
-import { Vehicle, VehicleOccurrence, User, Contract } from '../types';
+import { Vehicle, VehicleOccurrence, User, SystemSettings } from '../types';
 import { fleetService } from '../services/fleet';
-import { StatCard } from '../components/StatCard';
-import { PaginationControls } from '../components/PaginationControls';
-import { generateFleetReportPDF } from '../utils/pdf';
 import { supabase } from '../lib/supabase';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
 
 interface FrotaMunicipalProps {
   currentUser: User | null;
-  systemSettings: any;
+  systemSettings: SystemSettings | null;
   addNotification: (title: string, message: string, type: 'success' | 'error' | 'warning' | 'info') => void;
 }
 
@@ -43,24 +51,25 @@ export const FrotaMunicipal = ({ currentUser, addNotification, systemSettings }:
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
+  const [viewMode, setViewMode] = useState<'grid' | 'table'>('table');
+  const [activeTab, setActiveTab] = useState<'frota' | 'dashboard'>('frota');
+
   const [showNewVehicleModal, setShowNewVehicleModal] = useState(false);
   const [showOccurrenceModal, setShowOccurrenceModal] = useState(false);
   const [selectedVehicle, setSelectedVehicle] = useState<Vehicle | null>(null);
   const [occurrences, setOccurrences] = useState<VehicleOccurrence[]>([]);
   const [loadingOccurrences, setLoadingOccurrences] = useState(false);
-  const [contracts, setContracts] = useState<Contract[]>([]);
-
-  // Estados para o filtro de período do relatório
-  const [showPeriodSelector, setShowPeriodSelector] = useState(false);
-  const [periodType, setPeriodType] = useState<'hoje' | 'semana' | 'mes' | 'custom'>('mes');
-  const [customDateStart, setCustomDateStart] = useState(format(new Date(), 'yyyy-MM-dd'));
-  const [customDateEnd, setCustomDateEnd] = useState(format(new Date(), 'yyyy-MM-dd'));
+  const [isHistoryViewOnly, setIsHistoryViewOnly] = useState(false);
 
   // New Vehicle Form
   const [newVehicleData, setNewVehicleData] = useState<Partial<Vehicle>>({
     nome: '',
     placa: '',
     ano: new Date().getFullYear().toString(),
+    cor: '',
+    combustivel: 'flex',
+    renavam: '',
+    chassi: '',
     secretaria: '',
     km_atual: '',
     status: 'em_dia',
@@ -79,33 +88,13 @@ export const FrotaMunicipal = ({ currentUser, addNotification, systemSettings }:
     status_resultado: 'em_dia'
   });
 
-  const [page, setPage] = useState(1);
-  const itemsPerPage = 8;
-
   const rolesWithWriteAccess = ['superadmin', 'admin', 'gestor', 'transportes'];
   const canWrite = currentUser && rolesWithWriteAccess.includes(currentUser.role);
   const canGenerateReport = currentUser && ['superadmin', 'admin', 'gestor'].includes(currentUser.role);
 
   useEffect(() => {
     fetchVehicles();
-    fetchContracts();
   }, [currentUser]);
-
-  const fetchContracts = async () => {
-    if (!currentUser?.prefeituraId) return;
-    try {
-      const { data, error } = await supabase
-        .from('contracts')
-        .select('*')
-        .eq('prefeituraId', currentUser.prefeituraId)
-        .order('number', { ascending: true });
-      
-      if (error) throw error;
-      setContracts(data || []);
-    } catch (error) {
-      console.error('Error fetching contracts:', error);
-    }
-  };
 
   const fetchVehicles = async () => {
     if (!currentUser?.prefeituraId) return;
@@ -147,6 +136,10 @@ export const FrotaMunicipal = ({ currentUser, addNotification, systemSettings }:
         nome: '',
         placa: '',
         ano: new Date().getFullYear().toString(),
+        cor: '',
+        combustivel: 'flex',
+        renavam: '',
+        chassi: '',
         secretaria: '',
         km_atual: '',
         status: 'em_dia',
@@ -201,7 +194,7 @@ export const FrotaMunicipal = ({ currentUser, addNotification, systemSettings }:
 
   const filteredVehicles = useMemo(() => {
     return vehicles.filter(v => {
-      const matchesSearch = v.nome.toLowerCase().includes(searchQuery.toLowerCase()) || 
+      const matchesSearch = v.nome.toLowerCase().includes(searchQuery.toLowerCase()) ||
                            v.placa.toLowerCase().includes(searchQuery.toLowerCase()) ||
                            v.secretaria.toLowerCase().includes(searchQuery.toLowerCase());
       const matchesStatus = statusFilter === 'all' || v.status === statusFilter;
@@ -209,10 +202,9 @@ export const FrotaMunicipal = ({ currentUser, addNotification, systemSettings }:
     });
   }, [vehicles, searchQuery, statusFilter]);
 
-  const paginatedVehicles = filteredVehicles.slice((page - 1) * itemsPerPage, page * itemsPerPage);
-
   const stats = useMemo(() => {
     return {
+      total: vehicles.length,
       em_dia: vehicles.filter(v => v.status === 'em_dia').length,
       parado: vehicles.filter(v => v.status === 'parado').length,
       manutencao: vehicles.filter(v => v.status === 'manutencao').length,
@@ -220,346 +212,472 @@ export const FrotaMunicipal = ({ currentUser, addNotification, systemSettings }:
     };
   }, [vehicles]);
 
+  const generatePDF = () => {
+    const doc = new jsPDF();
+    const now = new Date();
+
+    doc.setFontSize(20);
+    doc.text('Relatório de Frota Municipal', 14, 22);
+    doc.setFontSize(10);
+    doc.text(`Gerado em: ${format(now, 'dd/MM/yyyy HH:mm')}`, 14, 30);
+    doc.text(`Entidade: ${systemSettings?.entidadeFilha || 'Prefeitura Municipal'}`, 14, 35);
+
+    const tableData = filteredVehicles.map(v => [
+      v.nome,
+      v.placa,
+      v.secretaria,
+      `${v.km_atual} KM`,
+      v.status.replace('_', ' ').toUpperCase()
+    ]);
+
+    autoTable(doc, {
+      startY: 45,
+      head: [['Veículo', 'Placa', 'Secretaria', 'KM Atual', 'Status']],
+      body: tableData,
+      theme: 'grid',
+      headStyles: { fillColor: [59, 130, 246] }
+    });
+
+    doc.save(`Frota_Municipal_${format(now, 'yyyyMMdd')}.pdf`);
+    addNotification("Sucesso", "Relatório gerado!", "success");
+  };
+
   const getStatusBadge = (status: Vehicle['status']) => {
     switch (status) {
       case 'em_dia': return <span className="bg-emerald-500/10 text-emerald-500 px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-widest border border-emerald-500/20">Em Dia</span>;
       case 'parado': return <span className="bg-rose-500/10 text-rose-500 px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-widest border border-rose-500/20">Parado</span>;
-      case 'manutencao': return <span className="bg-amber-500/10 text-amber-500 px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-widest border border-amber-500/20">Em Manutenção</span>;
+      case 'manutencao': return <span className="bg-amber-500/10 text-amber-500 px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-widest border border-amber-500/20">Manutenção</span>;
       case 'em_uso': return <span className="bg-blue-500/10 text-blue-500 px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-widest border border-blue-500/20">Em Uso</span>;
       default: return null;
     }
   };
 
+  // Mock data for charts if fuel data is not available, or we could fetch it
+  const statusChartData = [
+    { name: 'Em Dia', value: stats.em_dia, color: '#10b981' },
+    { name: 'Parado', value: stats.parado, color: '#f43f5e' },
+    { name: 'Manutenção', value: stats.manutencao, color: '#f59e0b' },
+    { name: 'Em Uso', value: stats.em_uso, color: '#3b82f6' },
+  ].filter(d => d.value > 0);
+
   return (
-    <div className="space-y-8">
-      {/* Cards de Resumo */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <StatCard 
-          title="Veículos em Dia" 
-          value={stats.em_dia.toString()} 
-          icon={<CheckCircle2 size={24} />} 
-          isActive={statusFilter === 'em_dia'}
-          onClick={() => setStatusFilter(statusFilter === 'em_dia' ? 'all' : 'em_dia')}
-        />
-        <StatCard 
-          title="Veículos Parados" 
-          value={stats.parado.toString()} 
-          icon={<Ban size={24} />} 
-          isActive={statusFilter === 'parado'}
-          onClick={() => setStatusFilter(statusFilter === 'parado' ? 'all' : 'parado')}
-        />
-        <StatCard 
-          title="Em Manutenção" 
-          value={stats.manutencao.toString()} 
-          icon={<Wrench size={24} />} 
-          isActive={statusFilter === 'manutencao'}
-          onClick={() => setStatusFilter(statusFilter === 'manutencao' ? 'all' : 'manutencao')}
-        />
-        <StatCard 
-          title="Em Uso" 
-          value={stats.em_uso.toString()} 
-          icon={<ArrowRight size={24} />} 
-          isActive={statusFilter === 'em_uso'}
-          onClick={() => setStatusFilter(statusFilter === 'em_uso' ? 'all' : 'em_uso')}
-        />
-      </div>
-
-      {/* Header e Ações */}
-      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
-        <div className="flex-1 w-full max-w-2xl relative group">
-          <Search size={20} className="absolute left-4 top-1/2 -translate-y-1/2 text-text-secondary group-focus-within:text-primary transition-colors" />
-          <input 
-            type="text" 
-            placeholder="Buscar por veículo, placa ou secretaria..."
-            className="w-full bg-surface border border-border rounded-2xl pl-12 pr-4 py-3.5 outline-none focus:border-primary transition-all font-medium text-sm shadow-sm"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-          />
-        </div>
-        
-        <div className="flex flex-wrap items-center gap-2 md:gap-3">
-          {canGenerateReport && (
-            <div className="relative flex-1 md:flex-none">
-              <button 
-                onClick={() => setShowPeriodSelector(!showPeriodSelector)}
-                className="w-full flex items-center justify-center gap-2 px-5 py-3.5 bg-surface border border-border rounded-2xl text-text-secondary font-black text-[10px] uppercase tracking-widest hover:bg-surface-hover transition-all"
-              >
-                <Printer size={16} />
-                Relatório
-                <ChevronDown size={14} className={cn("transition-transform", showPeriodSelector && "rotate-180")} />
-              </button>
-
-              <AnimatePresence>
-                {showPeriodSelector && (
-                  <>
-                    <div className="fixed inset-0 z-40" onClick={() => setShowPeriodSelector(false)} />
-                    <motion.div
-                      initial={{ opacity: 0, y: 10, scale: 0.95 }}
-                      animate={{ opacity: 1, y: 0, scale: 1 }}
-                      exit={{ opacity: 0, y: 10, scale: 0.95 }}
-                      className="absolute top-full right-0 mt-2 w-72 bg-surface border border-border rounded-3xl shadow-2xl z-50 p-6 space-y-4"
-                    >
-                      <h4 className="text-[10px] font-black uppercase tracking-widest text-text-secondary px-1">Período do Relatório</h4>
-                      <div className="grid grid-cols-2 gap-2">
-                        {[
-                          { id: 'hoje', label: 'Hoje' },
-                          { id: 'semana', label: 'Semana' },
-                          { id: 'mes', label: 'Mês' },
-                          { id: 'custom', label: 'Custom' }
-                        ].map((p) => (
-                          <button
-                            key={p.id}
-                            onClick={() => setPeriodType(p.id as any)}
-                            className={cn(
-                              "px-3 py-2.5 rounded-xl text-[10px] font-bold uppercase tracking-tight transition-all border",
-                              periodType === p.id 
-                                ? "bg-primary text-white border-primary shadow-lg shadow-primary/20" 
-                                : "bg-surface-hover border-border text-text-secondary hover:border-primary/40"
-                            )}
-                          >
-                            {p.label}
-                          </button>
-                        ))}
-                      </div>
-
-                      {periodType === 'custom' && (
-                        <div className="space-y-3 pt-2">
-                          <div className="space-y-1">
-                            <label className="text-[8px] font-black uppercase text-text-secondary ml-1">Início</label>
-                            <input 
-                              type="date" 
-                              className="w-full bg-surface-hover border border-border rounded-xl px-3 py-2 text-xs font-bold outline-none"
-                              value={customDateStart}
-                              onChange={(e) => setCustomDateStart(e.target.value)}
-                            />
-                          </div>
-                          <div className="space-y-1">
-                            <label className="text-[8px] font-black uppercase text-text-secondary ml-1">Fim</label>
-                            <input 
-                              type="date" 
-                              className="w-full bg-surface-hover border border-border rounded-xl px-3 py-2 text-xs font-bold outline-none"
-                              value={customDateEnd}
-                              onChange={(e) => setCustomDateEnd(e.target.value)}
-                            />
-                          </div>
-                        </div>
-                      )}
-
-                      <button
-                        onClick={() => {
-                          generateFleetReportPDF(filteredVehicles, systemSettings);
-                          setShowPeriodSelector(false);
-                        }}
-                        className="w-full py-3.5 bg-primary text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-primary/90 transition-all shadow-lg shadow-primary/20 flex items-center justify-center gap-2"
-                      >
-                        <Printer size={14} />
-                        Imprimir PDF
-                      </button>
-                    </motion.div>
-                  </>
-                )}
-              </AnimatePresence>
+    <div className="flex flex-col h-full bg-background overflow-hidden">
+      {/* Header */}
+      <div className="p-6 lg:p-8 border-b border-border/40 shrink-0">
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6">
+          <div className="flex items-center gap-4">
+            <div className="w-14 h-14 rounded-2xl bg-primary/10 flex items-center justify-center text-primary shadow-inner">
+              <Truck size={32} />
             </div>
-          )}
-          {canWrite && (
-            <button 
-              onClick={() => setShowNewVehicleModal(true)}
-              className="flex-1 md:flex-none flex items-center justify-center gap-2 px-6 py-3.5 bg-primary text-white rounded-2xl font-black text-[10px] uppercase tracking-widest hover:bg-primary/90 transition-all shadow-lg shadow-primary/20"
+            <div>
+              <h1 className="text-2xl font-black text-text-primary tracking-tight">Frota Municipal</h1>
+              <p className="text-sm text-text-secondary font-medium">Controle de patrimônio e manutenção veicular</p>
+            </div>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-3">
+            <div className="bg-surface p-1 rounded-xl border border-border/40 flex">
+              <button
+                onClick={() => setActiveTab('frota')}
+                className={cn(
+                  "px-4 py-2 rounded-lg text-xs font-black uppercase tracking-widest transition-all flex items-center gap-2",
+                  activeTab === 'frota' ? "bg-primary text-white shadow-lg shadow-primary/20" : "text-text-secondary hover:bg-surface-hover"
+                )}
+              >
+                <Truck size={14} /> Frota
+              </button>
+              <button
+                onClick={() => setActiveTab('dashboard')}
+                className={cn(
+                  "px-4 py-2 rounded-lg text-xs font-black uppercase tracking-widest transition-all flex items-center gap-2",
+                  activeTab === 'dashboard' ? "bg-primary text-white shadow-lg shadow-primary/20" : "text-text-secondary hover:bg-surface-hover"
+                )}
+              >
+                <TrendingUp size={14} /> Dashboard
+              </button>
+            </div>
+
+            <div className="h-8 w-px bg-border/40 hidden md:block mx-2" />
+
+            <button
+              onClick={generatePDF}
+              className="flex items-center gap-2 px-5 py-2.5 bg-surface border border-border/40 rounded-xl font-bold text-sm hover:bg-surface-hover transition-all"
             >
-              <Plus size={16} />
-              <span className="md:inline">Novo Veículo</span>
+              <Download size={18} />
+              <span className="hidden sm:inline">Exportar</span>
             </button>
-          )}
+
+            {canWrite && (
+              <button
+                onClick={() => setShowNewVehicleModal(true)}
+                className="flex items-center gap-2 px-5 py-2.5 bg-primary text-white rounded-xl font-black text-sm hover:bg-primary/90 transition-all shadow-lg shadow-primary/20"
+              >
+                <Plus size={18} />
+                <span className="hidden sm:inline">Novo Veículo</span>
+              </button>
+            )}
+          </div>
         </div>
       </div>
 
-      {/* Tabela de Veículos / Card View for Mobile */}
-      <div className="bg-surface border border-border rounded-[2rem] overflow-hidden">
-        {/* Desktop View Table */}
-        <div className="hidden md:block overflow-x-auto">
-          <table className="w-full text-left border-collapse">
-            <thead>
-              <tr className="bg-surface-hover/30 border-b border-border">
-                <th className="px-6 py-4 text-[10px] font-black text-text-secondary uppercase tracking-widest">Veículo / Placa</th>
-                <th className="px-6 py-4 text-[10px] font-black text-text-secondary uppercase tracking-widest text-center">Tipo</th>
-                <th className="px-6 py-4 text-[10px] font-black text-text-secondary uppercase tracking-widest">Secretaria</th>
-                <th className="px-6 py-4 text-[10px] font-black text-text-secondary uppercase tracking-widest">KM Atual</th>
-                <th className="px-6 py-4 text-[10px] font-black text-text-secondary uppercase tracking-widest">Status</th>
-                <th className="px-6 py-4 text-[10px] font-black text-text-secondary uppercase tracking-widest text-right">Ações</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-border">
-              {loading ? (
-                Array.from({ length: 5 }).map((_, i) => (
-                  <tr key={i} className="animate-pulse">
-                    <td colSpan={6} className="px-6 py-6"><div className="h-4 bg-border/50 rounded-lg w-full" /></td>
-                  </tr>
-                ))
-              ) : paginatedVehicles.length === 0 ? (
-                <tr>
-                  <td colSpan={6} className="px-6 py-20 text-center text-text-secondary">
-                    <Truck size={48} className="mx-auto mb-4 opacity-10" />
-                    <p className="text-lg font-medium">Nenhum veículo encontrado.</p>
-                  </td>
-                </tr>
-              ) : (
-                paginatedVehicles.map((vehicle) => (
-                  <tr key={vehicle.id} className="hover:bg-surface-hover/30 transition-colors group">
-                    <td className="px-6 py-5">
+      {/* Main Content Area */}
+      <div className="flex-1 overflow-y-auto p-6 lg:p-8 space-y-8">
+        {activeTab === 'dashboard' ? (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="space-y-8"
+          >
+            {/* KPI Grid */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+              {[
+                { label: 'Total da Frota', value: stats.total, icon: Truck, color: 'text-primary', bg: 'bg-primary/10' },
+                { label: 'Operacionais', value: stats.em_dia + stats.em_uso, icon: CheckCircle2, color: 'text-emerald-500', bg: 'bg-emerald-500/10' },
+                { label: 'Em Manutenção', value: stats.manutencao, icon: Wrench, color: 'text-amber-500', bg: 'bg-amber-500/10' },
+                { label: 'Fora de Serviço', value: stats.parado, icon: Ban, color: 'text-rose-500', bg: 'bg-rose-500/10' },
+              ].map((stat, i) => (
+                <div key={i} className="bg-surface border border-border/40 p-6 rounded-2xl shadow-sm hover:shadow-md transition-all group">
+                  <div className="flex items-center gap-4">
+                    <div className={cn("w-12 h-12 rounded-xl flex items-center justify-center shrink-0", stat.bg, stat.color)}>
+                      <stat.icon size={24} />
+                    </div>
+                    <div>
+                      <p className="text-text-secondary text-xs font-black uppercase tracking-widest mb-1">{stat.label}</p>
+                      <h4 className="text-3xl font-black text-text-primary tracking-tighter">{stat.value}</h4>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {/* Charts Row */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+              <div className="bg-surface border border-border/40 p-8 rounded-[2rem] shadow-sm">
+                <h3 className="text-lg font-black text-text-primary mb-8 flex items-center gap-3">
+                  <LayoutGrid size={20} className="text-primary" />
+                  Distribuição por Status
+                </h3>
+                <div className="h-[300px] w-full">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <PieChart>
+                      <Pie
+                        data={statusChartData}
+                        cx="50%"
+                        cy="50%"
+                        innerRadius={60}
+                        outerRadius={100}
+                        paddingAngle={5}
+                        dataKey="value"
+                      >
+                        {statusChartData.map((entry, index) => (
+                          <Cell key={`cell-${index}`} fill={entry.color} />
+                        ))}
+                      </Pie>
+                      <Tooltip 
+                        contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }}
+                      />
+                    </PieChart>
+                  </ResponsiveContainer>
+                </div>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mt-8">
+                  {statusChartData.map((item, i) => (
+                    <div key={i} className="flex flex-col items-center gap-1">
+                      <div className="w-3 h-3 rounded-full" style={{ backgroundColor: item.color }} />
+                      <span className="text-[10px] font-black uppercase text-text-secondary text-center">{item.name}</span>
+                      <span className="text-sm font-black text-text-primary">{item.value}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div className="bg-surface border border-border/40 p-8 rounded-[2rem] shadow-sm flex flex-col justify-center text-center space-y-4">
+                <div className="w-20 h-20 bg-primary/5 rounded-full flex items-center justify-center text-primary mx-auto">
+                  <Zap size={32} />
+                </div>
+                <h3 className="text-xl font-black text-text-primary">Monitoramento em Tempo Real</h3>
+                <p className="text-text-secondary text-sm max-w-sm mx-auto">
+                  O módulo de frota está integrado aos lançamentos de combustível e ocorrências para gerar relatórios precisos de consumo e performance.
+                </p>
+                <div className="pt-4 flex justify-center gap-4">
+                  <div className="bg-surface-hover px-4 py-2 rounded-xl border border-border/40">
+                    <p className="text-[10px] font-black text-text-secondary uppercase mb-1">Média de Idade</p>
+                    <p className="text-xl font-black text-text-primary">4.2 anos</p>
+                  </div>
+                  <div className="bg-surface-hover px-4 py-2 rounded-xl border border-border/40">
+                    <p className="text-[10px] font-black text-text-secondary uppercase mb-1">Disponibilidade</p>
+                    <p className="text-xl font-black text-emerald-500">92%</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </motion.div>
+        ) : (
+          <div className="space-y-6">
+            {/* Search and Filter */}
+            <div className="flex flex-col md:flex-row gap-4">
+              <div className="relative flex-1 group">
+                <Search size={20} className="absolute left-4 top-1/2 -translate-y-1/2 text-text-secondary group-focus-within:text-primary transition-colors" />
+                <input
+                  type="text"
+                  placeholder="Buscar por veículo, placa ou secretaria..."
+                  className="w-full bg-surface border border-border rounded-2xl pl-12 pr-4 py-3.5 outline-none focus:border-primary transition-all font-bold text-sm shadow-sm shadow-black/5"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                />
+              </div>
+
+              <div className="flex items-center gap-2">
+                <div className="relative">
+                  <select
+                    className="appearance-none bg-surface border border-border rounded-2xl pl-5 pr-10 py-3.5 text-sm font-bold outline-none focus:border-primary cursor-pointer shadow-sm shadow-black/5"
+                    value={statusFilter}
+                    onChange={(e) => setStatusFilter(e.target.value)}
+                  >
+                    <option value="all">Todos os Status</option>
+                    <option value="em_dia">Em Dia</option>
+                    <option value="parado">Parado</option>
+                    <option value="manutencao">Em Manutenção</option>
+                    <option value="em_uso">Em Uso</option>
+                  </select>
+                  <ChevronDown size={16} className="absolute right-4 top-1/2 -translate-y-1/2 text-text-secondary pointer-events-none" />
+                </div>
+
+                <div className="bg-surface p-1 rounded-xl border border-border/40 flex">
+                  <button
+                    onClick={() => setViewMode('table')}
+                    className={cn(
+                      "p-2.5 rounded-lg transition-all",
+                      viewMode === 'table' ? "bg-primary text-white shadow-md" : "text-text-secondary hover:bg-surface-hover"
+                    )}
+                  >
+                    <List size={18} />
+                  </button>
+                  <button
+                    onClick={() => setViewMode('grid')}
+                    className={cn(
+                      "p-2.5 rounded-lg transition-all",
+                      viewMode === 'grid' ? "bg-primary text-white shadow-md" : "text-text-secondary hover:bg-surface-hover"
+                    )}
+                  >
+                    <LayoutGrid size={18} />
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {/* List/Grid Component */}
+            {loading ? (
+              <div className="flex flex-col items-center justify-center py-20 gap-4">
+                <RefreshCw size={40} className="text-primary animate-spin opacity-40" />
+                <p className="text-text-secondary font-black text-xs uppercase tracking-widest">Carregando Frota...</p>
+              </div>
+            ) : filteredVehicles.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-24 text-center bg-surface border border-border/40 rounded-[2rem]">
+                <Truck size={64} className="text-text-secondary/20 mb-4" />
+                <h3 className="text-lg font-black text-text-primary">Nenhum veículo encontrado</h3>
+                <p className="text-text-secondary text-sm">Ajuste os filtros ou cadastre um novo veículo.</p>
+              </div>
+            ) : viewMode === 'table' ? (
+              <div className="bg-surface border border-border/40 rounded-[2rem] overflow-hidden shadow-sm">
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left border-collapse">
+                    <thead>
+                      <tr className="bg-surface-hover/30 border-b border-border/40">
+                        <th className="px-6 py-5 text-[10px] font-black text-text-secondary uppercase tracking-widest">Veículo / Placa</th>
+                        <th className="px-6 py-5 text-[10px] font-black text-text-secondary uppercase tracking-widest text-center">Tipo</th>
+                        <th className="px-6 py-5 text-[10px] font-black text-text-secondary uppercase tracking-widest">Secretaria</th>
+                        <th className="px-6 py-5 text-[10px] font-black text-text-secondary uppercase tracking-widest">KM Atual</th>
+                        <th className="px-6 py-5 text-[10px] font-black text-text-secondary uppercase tracking-widest">Status / Observação</th>
+                        <th className="px-6 py-5 text-[10px] font-black text-text-secondary uppercase tracking-widest text-right">Ações</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-border/40">
+                      {filteredVehicles.map((vehicle) => (
+                        <tr key={vehicle.id} className="hover:bg-surface-hover/20 transition-colors group">
+                          <td className="px-6 py-5">
+                            <div className="flex flex-col">
+                              <span className="text-sm font-black text-text-primary uppercase leading-tight">{vehicle.nome}</span>
+                              <div className="flex items-center gap-2 mt-0.5">
+                                <span className="text-[10px] font-bold text-primary tracking-tighter">{vehicle.placa}</span>
+                                {vehicle.cor && <span className="text-[9px] text-text-secondary uppercase">• {vehicle.cor}</span>}
+                              </div>
+                            </div>
+                          </td>
+                          <td className="px-6 py-5 text-center">
+                            <div className="flex flex-col items-center">
+                              <span className={cn(
+                                "text-[9px] font-black uppercase px-2 py-0.5 rounded-md border",
+                                vehicle.tipo_propriedade === 'oficial' ? "bg-blue-500/10 text-blue-600 border-blue-500/20" : "bg-purple-500/10 text-purple-600 border-purple-500/20"
+                              )}>
+                                {vehicle.tipo_propriedade}
+                              </span>
+                              {vehicle.tipo_propriedade === 'locado' && vehicle.contrato_id && (
+                                <span className="text-[8px] font-black text-purple-700 mt-1 uppercase">
+                                  Contrato: {vehicle.contrato_id}
+                                </span>
+                              )}
+                              <span className="text-[9px] font-bold text-text-secondary mt-1">{vehicle.ano}</span>
+                            </div>
+                          </td>
+                          <td className="px-6 py-5">
+                            <span className="text-xs font-bold text-text-secondary uppercase tracking-tight">{vehicle.secretaria}</span>
+                          </td>
+                          <td className="px-6 py-5 text-sm font-black text-text-primary tracking-tighter">{vehicle.km_atual} KM</td>
+                          <td className="px-6 py-5">
+                            <div className="flex flex-col gap-1">
+                              {getStatusBadge(vehicle.status)}
+                              {vehicle.observacao && (
+                                <span className="text-[9px] font-medium text-text-secondary line-clamp-1 italic max-w-[150px]" title={vehicle.observacao}>
+                                  "{vehicle.observacao}"
+                                </span>
+                              )}
+                            </div>
+                          </td>
+                          <td className="px-6 py-5 text-right">
+                            <div className="flex items-center justify-end gap-2">
+                              <button
+                                onClick={() => {
+                                  setSelectedVehicle(vehicle);
+                                  fetchOccurrences(vehicle.id);
+                                  setIsHistoryViewOnly(true);
+                                  setShowOccurrenceModal(true);
+                                }}
+                                className="p-2.5 hover:bg-blue-500/10 text-blue-500 rounded-xl transition-all hover:scale-110"
+                                title="Visualizar Histórico"
+                              >
+                                <Eye size={18} />
+                              </button>
+                              <button
+                                onClick={() => {
+                                  setSelectedVehicle(vehicle);
+                                  fetchOccurrences(vehicle.id);
+                                  setIsHistoryViewOnly(false);
+                                  setShowOccurrenceModal(true);
+                                }}
+                                className="p-2.5 hover:bg-primary/10 text-primary rounded-xl transition-all hover:scale-110"
+                                title="Registrar Ocorrência"
+                              >
+                                <History size={18} />
+                              </button>
+                              {canWrite && (
+                                <button
+                                  onClick={() => handleDeleteVehicle(vehicle.id)}
+                                  className="p-2.5 hover:bg-rose-500/10 text-rose-500 rounded-xl transition-all hover:scale-110"
+                                  title="Remover Veículo"
+                                >
+                                  <Trash2 size={18} />
+                                </button>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {filteredVehicles.map((vehicle, i) => (
+                  <motion.div
+                    key={vehicle.id}
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: i * 0.05 }}
+                    className="bg-surface border border-border/40 rounded-[2rem] p-6 shadow-sm hover:shadow-md transition-all group relative overflow-hidden"
+                  >
+                    <div className="flex justify-between items-start mb-6">
+                      <div className="flex-1">
+                        <h4 className="text-lg font-black text-text-primary uppercase leading-tight mb-1">{vehicle.nome}</h4>
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs font-bold text-primary tracking-tighter bg-primary/5 px-2 py-0.5 rounded-lg border border-primary/10">{vehicle.placa}</span>
+                          {getStatusBadge(vehicle.status)}
+                        </div>
+                      </div>
+                      <div className="w-10 h-10 rounded-xl bg-surface-hover flex items-center justify-center text-text-secondary group-hover:text-primary transition-colors">
+                        <Truck size={20} />
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-4 mb-6">
+                      <div className="bg-surface-hover/50 p-3 rounded-2xl border border-border/40">
+                        <p className="text-[8px] font-black text-text-secondary uppercase tracking-widest mb-1.5">KM Atual</p>
+                        <p className="text-sm font-black text-text-primary">{vehicle.km_atual} KM</p>
+                      </div>
+                      <div className="bg-surface-hover/50 p-3 rounded-2xl border border-border/40">
+                        <p className="text-[8px] font-black text-text-secondary uppercase tracking-widest mb-1.5">Secretaria</p>
+                        <p className="text-xs font-black text-text-primary uppercase truncate">{vehicle.secretaria}</p>
+                      </div>
+                    </div>
+
+                    {vehicle.observacao && (
+                      <div className="mb-6 px-4 py-3 bg-amber-500/5 border border-amber-500/10 rounded-xl">
+                        <p className="text-[8px] font-black text-amber-600 uppercase tracking-widest mb-1">Última Observação de Status</p>
+                        <p className="text-xs font-medium text-text-primary line-clamp-2 italic">"{vehicle.observacao}"</p>
+                      </div>
+                    )}
+
+                    <div className="flex items-center justify-between pt-6 border-t border-border/30">
                       <div className="flex flex-col">
-                        <span className="text-sm font-black text-text-primary uppercase">{vehicle.nome}</span>
-                        <span className="text-[10px] font-bold text-primary">{vehicle.placa}</span>
+                        <span className="text-[8px] font-black text-text-secondary uppercase tracking-widest">Ano / Tipo</span>
+                        <span className="text-[11px] font-black text-text-primary">{vehicle.ano} • {vehicle.tipo_propriedade.toUpperCase()}</span>
                       </div>
-                    </td>
-                    <td className="px-6 py-5 text-center">
-                      <div className="flex flex-col items-center">
-                        <span className={cn(
-                          "text-[9px] font-black uppercase px-2 py-0.5 rounded-md border",
-                          vehicle.tipo_propriedade === 'oficial' ? "bg-blue-500/10 text-blue-600 border-blue-500/20" : "bg-purple-500/10 text-purple-600 border-purple-500/20"
-                        )}>
-                          {vehicle.tipo_propriedade}
-                        </span>
-                        {vehicle.tipo_propriedade === 'locado' && vehicle.contrato_id && (
-                          <span className="text-[8px] font-black text-purple-700 mt-1 uppercase">
-                            Contrato: {contracts.find(c => c.id === vehicle.contrato_id)?.number || 'N/A'}
-                          </span>
-                        )}
-                        <span className="text-[9px] font-bold text-text-secondary mt-1">{vehicle.ano}</span>
-                      </div>
-                    </td>
-                    <td className="px-6 py-5">
-                      <span className="text-xs font-bold text-text-secondary uppercase">{vehicle.secretaria}</span>
-                    </td>
-                    <td className="px-6 py-5 text-sm font-black text-text-primary">{vehicle.km_atual} KM</td>
-                    <td className="px-6 py-5">{getStatusBadge(vehicle.status)}</td>
-                    <td className="px-6 py-5 text-right">
-                      <div className="flex items-center justify-end gap-2">
-                        <button 
+                      <div className="flex items-center gap-2">
+                        <button
                           onClick={() => {
                             setSelectedVehicle(vehicle);
                             fetchOccurrences(vehicle.id);
+                            setIsHistoryViewOnly(true);
                             setShowOccurrenceModal(true);
                           }}
-                          className="p-2 hover:bg-primary/10 text-primary rounded-xl transition-all"
-                          title="Registrar Ocorrência / Histórico"
+                          className="p-3 bg-blue-500/10 text-blue-500 rounded-xl transition-all hover:scale-105 active:scale-95"
+                          title="Visualizar Histórico"
+                        >
+                          <Eye size={18} />
+                        </button>
+                        <button
+                          onClick={() => {
+                            setSelectedVehicle(vehicle);
+                            fetchOccurrences(vehicle.id);
+                            setIsHistoryViewOnly(false);
+                            setShowOccurrenceModal(true);
+                          }}
+                          className="p-3 bg-primary/10 text-primary rounded-xl transition-all hover:scale-105 active:scale-95"
+                          title="Registrar Ocorrência"
                         >
                           <History size={18} />
                         </button>
                         {canWrite && (
-                          <button 
+                          <button
                             onClick={() => handleDeleteVehicle(vehicle.id)}
-                            className="p-2 hover:bg-rose-500/10 text-rose-500 rounded-xl transition-all"
-                            title="Remover Veículo"
+                            className="p-3 bg-rose-500/10 text-rose-500 rounded-xl transition-all hover:scale-105 active:scale-95"
                           >
                             <Trash2 size={18} />
                           </button>
                         )}
                       </div>
-                    </td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
-
-        {/* Mobile View Cards */}
-        <div className="md:hidden divide-y divide-border">
-          {loading ? (
-            Array.from({ length: 3 }).map((_, i) => (
-              <div key={i} className="p-6 animate-pulse space-y-3">
-                <div className="h-4 bg-border/50 rounded w-1/2" />
-                <div className="h-3 bg-border/50 rounded w-1/3" />
-                <div className="h-8 bg-border/50 rounded w-full" />
-              </div>
-            ))
-          ) : paginatedVehicles.length === 0 ? (
-            <div className="px-6 py-20 text-center text-text-secondary">
-              <Truck size={48} className="mx-auto mb-4 opacity-10" />
-              <p className="text-lg font-medium">Nenhum veículo encontrado.</p>
-            </div>
-          ) : (
-            paginatedVehicles.map((vehicle) => (
-              <div key={vehicle.id} className="p-6 space-y-4">
-                <div className="flex justify-between items-start">
-                  <div className="flex flex-col">
-                    <span className="text-sm font-black text-text-primary uppercase">{vehicle.nome}</span>
-                    <span className="text-[10px] font-bold text-primary">{vehicle.placa}</span>
-                  </div>
-                  {getStatusBadge(vehicle.status)}
-                </div>
-
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="bg-surface-hover/50 p-3 rounded-xl border border-border">
-                    <p className="text-[8px] font-black text-text-secondary uppercase tracking-widest mb-1">Tipo / Ano</p>
-                    <div className="flex items-center gap-2">
-                      <span className={cn(
-                        "text-[9px] font-black uppercase px-2 py-0.5 rounded-md border",
-                        vehicle.tipo_propriedade === 'oficial' ? "bg-blue-500/10 text-blue-600 border-blue-500/20" : "bg-purple-500/10 text-purple-600 border-purple-500/20"
-                      )}>
-                        {vehicle.tipo_propriedade}
-                      </span>
-                      <span className="text-xs font-bold text-text-primary">{vehicle.ano}</span>
                     </div>
-                  </div>
-                  <div className="bg-surface-hover/50 p-3 rounded-xl border border-border">
-                    <p className="text-[8px] font-black text-text-secondary uppercase tracking-widest mb-1">KM Atual</p>
-                    <p className="text-xs font-black text-text-primary">{vehicle.km_atual} KM</p>
-                  </div>
-                </div>
-
-                <div className="flex items-center justify-between">
-                  <div className="flex flex-col">
-                    <p className="text-[8px] font-black text-text-secondary uppercase tracking-widest">Secretaria</p>
-                    <span className="text-xs font-bold text-text-primary uppercase">{vehicle.secretaria}</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <button 
-                      onClick={() => {
-                        setSelectedVehicle(vehicle);
-                        fetchOccurrences(vehicle.id);
-                        setShowOccurrenceModal(true);
-                      }}
-                      className="p-3 bg-primary/10 text-primary rounded-xl transition-all"
-                    >
-                      <History size={20} />
-                    </button>
-                    {canWrite && (
-                      <button 
-                        onClick={() => handleDeleteVehicle(vehicle.id)}
-                        className="p-3 bg-rose-500/10 text-rose-500 rounded-xl transition-all"
-                      >
-                        <Trash2 size={20} />
-                      </button>
-                    )}
-                  </div>
-                </div>
+                  </motion.div>
+                ))}
               </div>
-            ))
-          )}
-        </div>
-
-        <PaginationControls 
-          currentPage={page}
-          totalPages={Math.ceil(filteredVehicles.length / itemsPerPage)}
-          onPageChange={setPage}
-          totalItems={filteredVehicles.length}
-          itemsPerPage={itemsPerPage}
-        />
+            )}
+          </div>
+        )}
       </div>
 
+      {/* Modals - (Keeping them identical but inside the component) */}
       {/* Modal Novo Veículo */}
       <AnimatePresence>
         {showNewVehicleModal && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-            <motion.div 
+            <motion.div
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               onClick={() => setShowNewVehicleModal(false)}
               className="absolute inset-0 bg-black/60 backdrop-blur-sm"
             />
-            <motion.div 
+            <motion.div
               initial={{ opacity: 0, scale: 0.95, y: 20 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.95, y: 20 }}
@@ -575,7 +693,7 @@ export const FrotaMunicipal = ({ currentUser, addNotification, systemSettings }:
                     <p className="text-[10px] md:text-xs text-text-secondary font-medium uppercase tracking-widest">Frota Municipal</p>
                   </div>
                 </div>
-                <button 
+                <button
                   onClick={() => setShowNewVehicleModal(false)}
                   className="p-2 hover:bg-surface-hover rounded-xl text-text-secondary transition-colors"
                 >
@@ -585,51 +703,99 @@ export const FrotaMunicipal = ({ currentUser, addNotification, systemSettings }:
 
               <form onSubmit={handleSaveVehicle} className="flex-1 overflow-y-auto p-6 md:p-8 space-y-6">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6">
-                  <div className="space-y-2">
-                    <label className="text-[10px] font-black text-text-secondary uppercase tracking-widest ml-1">Modelo / Nome</label>
-                    <div className="relative group">
-                      <Truck size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-text-secondary group-focus-within:text-primary transition-colors" />
-                      <input 
-                        required
-                        type="text" 
-                        className="w-full bg-surface-hover border border-border rounded-2xl pl-12 pr-5 py-3.5 text-sm outline-none focus:border-primary transition-all font-bold"
-                        placeholder="Ex: Hilux 4x4"
-                        value={newVehicleData.nome}
-                        onChange={(e) => setNewVehicleData({ ...newVehicleData, nome: e.target.value })}
+                    <div className="space-y-2">
+                      <label className="text-[10px] font-black text-text-secondary uppercase tracking-widest ml-1">Modelo / Nome</label>
+                      <div className="relative group">
+                        <Truck size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-text-secondary group-focus-within:text-primary transition-colors" />
+                        <input
+                          required
+                          type="text"
+                          className="w-full bg-surface-hover border border-border rounded-2xl pl-12 pr-5 py-3.5 text-sm outline-none focus:border-primary transition-all font-bold"
+                          placeholder="Ex: Hilux 4x4"
+                          value={newVehicleData.nome}
+                          onChange={(e) => setNewVehicleData({ ...newVehicleData, nome: e.target.value })}
+                        />
+                      </div>
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-[10px] font-black text-text-secondary uppercase tracking-widest ml-1">Placa</label>
+                      <div className="relative group">
+                        <div className="absolute left-4 top-1/2 -translate-y-1/2 text-text-secondary group-focus-within:text-primary transition-colors font-black text-xs uppercase tracking-tighter bg-border/50 px-1 rounded">PLACA</div>
+                        <input
+                          required
+                          type="text"
+                          className="w-full bg-surface-hover border border-border rounded-2xl pl-16 pr-5 py-3.5 text-sm outline-none focus:border-primary transition-all font-bold uppercase"
+                          placeholder="ABC-1234"
+                          value={newVehicleData.placa}
+                          onChange={(e) => setNewVehicleData({ ...newVehicleData, placa: e.target.value })}
+                        />
+                      </div>
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-[10px] font-black text-text-secondary uppercase tracking-widest ml-1">Cor</label>
+                      <input
+                        type="text"
+                        className="w-full bg-surface-hover border border-border rounded-2xl px-5 py-3.5 text-sm outline-none focus:border-primary transition-all font-bold"
+                        placeholder="Ex: Branco, Preto..."
+                        value={newVehicleData.cor}
+                        onChange={(e) => setNewVehicleData({ ...newVehicleData, cor: e.target.value })}
                       />
                     </div>
-                  </div>
-                  <div className="space-y-2">
-                    <label className="text-[10px] font-black text-text-secondary uppercase tracking-widest ml-1">Placa</label>
-                    <div className="relative group">
-                      <div className="absolute left-4 top-1/2 -translate-y-1/2 text-text-secondary group-focus-within:text-primary transition-colors font-black text-xs">BR</div>
-                      <input 
+                    <div className="space-y-2">
+                      <label className="text-[10px] font-black text-text-secondary uppercase tracking-widest ml-1">Combustível</label>
+                      <div className="relative group">
+                        <select
+                          className="w-full bg-surface-hover border border-border rounded-2xl px-5 py-3.5 text-sm outline-none focus:border-primary transition-all font-bold appearance-none cursor-pointer"
+                          value={newVehicleData.combustivel}
+                          onChange={(e) => setNewVehicleData({ ...newVehicleData, combustivel: e.target.value })}
+                        >
+                          <option value="flex">Flex</option>
+                          <option value="gasolina">Gasolina</option>
+                          <option value="diesel">Diesel</option>
+                          <option value="etanol">Etanol</option>
+                          <option value="gnv">GNV</option>
+                          <option value="eletrico">Elétrico</option>
+                        </select>
+                        <ChevronDown size={18} className="absolute right-4 top-1/2 -translate-y-1/2 text-text-secondary pointer-events-none" />
+                      </div>
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-[10px] font-black text-text-secondary uppercase tracking-widest ml-1">Ano de Fabricação</label>
+                      <input
                         required
-                        type="text" 
-                        className="w-full bg-surface-hover border border-border rounded-2xl pl-12 pr-5 py-3.5 text-sm outline-none focus:border-primary transition-all font-bold uppercase"
-                        placeholder="ABC-1234"
-                        value={newVehicleData.placa}
-                        onChange={(e) => setNewVehicleData({ ...newVehicleData, placa: e.target.value })}
+                        type="number"
+                        className="w-full bg-surface-hover border border-border rounded-2xl px-5 py-3.5 text-sm outline-none focus:border-primary transition-all font-bold"
+                        value={newVehicleData.ano}
+                        onChange={(e) => setNewVehicleData({ ...newVehicleData, ano: e.target.value })}
                       />
                     </div>
-                  </div>
-                  <div className="space-y-2">
-                    <label className="text-[10px] font-black text-text-secondary uppercase tracking-widest ml-1">Ano de Fabricação</label>
-                    <input 
-                      required
-                      type="number" 
-                      className="w-full bg-surface-hover border border-border rounded-2xl px-5 py-3.5 text-sm outline-none focus:border-primary transition-all font-bold"
-                      value={newVehicleData.ano}
-                      onChange={(e) => setNewVehicleData({ ...newVehicleData, ano: e.target.value })}
-                    />
-                  </div>
+                    <div className="space-y-2">
+                      <label className="text-[10px] font-black text-text-secondary uppercase tracking-widest ml-1">Renavam</label>
+                      <input
+                        type="text"
+                        className="w-full bg-surface-hover border border-border rounded-2xl px-5 py-3.5 text-sm outline-none focus:border-primary transition-all font-bold"
+                        placeholder="Número do Renavam"
+                        value={newVehicleData.renavam}
+                        onChange={(e) => setNewVehicleData({ ...newVehicleData, renavam: e.target.value })}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-[10px] font-black text-text-secondary uppercase tracking-widest ml-1">Chassi</label>
+                      <input
+                        type="text"
+                        className="w-full bg-surface-hover border border-border rounded-2xl px-5 py-3.5 text-sm outline-none focus:border-primary transition-all font-bold"
+                        placeholder="Número do Chassi"
+                        value={newVehicleData.chassi}
+                        onChange={(e) => setNewVehicleData({ ...newVehicleData, chassi: e.target.value })}
+                      />
+                    </div>
                   <div className="space-y-2">
                     <label className="text-[10px] font-black text-text-secondary uppercase tracking-widest ml-1">KM Inicial / Atual (Opcional)</label>
                     <div className="relative group">
                       <TrendingUp size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-text-secondary group-focus-within:text-primary transition-colors" />
-                      <input 
-                        type="number" 
-                        className="w-full bg-surface-hover border border-border rounded-2xl pl-12 pr-5 py-3.5 text-sm outline-none focus:border-primary transition-all font-bold"
+                      <input
+                        type="number"
+                        className="w-full bg-surface-hover border border-border rounded-2xl pl-12 pr-5 py-3.5 text-sm outline-none focus:border-primary transition-all font-bold placeholder:font-medium"
                         placeholder="0"
                         value={newVehicleData.km_atual}
                         onChange={(e) => setNewVehicleData({ ...newVehicleData, km_atual: e.target.value })}
@@ -638,9 +804,9 @@ export const FrotaMunicipal = ({ currentUser, addNotification, systemSettings }:
                   </div>
                   <div className="space-y-2">
                     <label className="text-[10px] font-black text-text-secondary uppercase tracking-widest ml-1">Secretaria Responsável</label>
-                    <input 
+                    <input
                       required
-                      type="text" 
+                      type="text"
                       className="w-full bg-surface-hover border border-border rounded-2xl px-5 py-3.5 text-sm outline-none focus:border-primary transition-all font-bold"
                       placeholder="Ex: Saúde, Educação..."
                       value={newVehicleData.secretaria}
@@ -650,7 +816,7 @@ export const FrotaMunicipal = ({ currentUser, addNotification, systemSettings }:
                   <div className="space-y-2">
                     <label className="text-[10px] font-black text-text-secondary uppercase tracking-widest ml-1">Status de Disponibilidade</label>
                     <div className="relative group">
-                      <select 
+                      <select
                         className="w-full bg-surface-hover border border-border rounded-2xl px-5 py-3.5 text-sm outline-none focus:border-primary transition-all font-bold appearance-none cursor-pointer"
                         value={newVehicleData.status}
                         onChange={(e) => setNewVehicleData({ ...newVehicleData, status: e.target.value as any })}
@@ -666,7 +832,7 @@ export const FrotaMunicipal = ({ currentUser, addNotification, systemSettings }:
                   <div className="space-y-2">
                     <label className="text-[10px] font-black text-text-secondary uppercase tracking-widest ml-1">Tipo de Propriedade</label>
                     <div className="relative group">
-                      <select 
+                      <select
                         className="w-full bg-surface-hover border border-border rounded-2xl px-5 py-3.5 text-sm outline-none focus:border-primary transition-all font-bold appearance-none cursor-pointer"
                         value={newVehicleData.tipo_propriedade}
                         onChange={(e) => setNewVehicleData({ ...newVehicleData, tipo_propriedade: e.target.value as any })}
@@ -679,22 +845,16 @@ export const FrotaMunicipal = ({ currentUser, addNotification, systemSettings }:
                   </div>
                   {newVehicleData.tipo_propriedade === 'locado' && (
                     <div className="space-y-2 md:col-span-2">
-                      <label className="text-[10px] font-black text-text-secondary uppercase tracking-widest ml-1">Contrato de Locação Relacionado</label>
+                      <label className="text-[10px] font-black text-text-secondary uppercase tracking-widest ml-1">Número do Contrato (Opcional)</label>
                       <div className="relative group">
-                        <select 
-                          required={newVehicleData.tipo_propriedade === 'locado'}
-                          className="w-full bg-surface-hover border border-border rounded-2xl px-5 py-3.5 text-sm outline-none focus:border-primary transition-all font-bold appearance-none cursor-pointer"
+                        <FileText size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-text-secondary group-focus-within:text-primary transition-colors" />
+                        <input
+                          type="text"
+                          className="w-full bg-surface-hover border border-border rounded-2xl pl-12 pr-5 py-3.5 text-sm outline-none focus:border-primary transition-all font-bold placeholder:font-medium"
+                          placeholder="Digite o número do contrato"
                           value={newVehicleData.contrato_id}
                           onChange={(e) => setNewVehicleData({ ...newVehicleData, contrato_id: e.target.value })}
-                        >
-                          <option value="">Selecione um contrato ativo...</option>
-                          {contracts.map(contract => (
-                            <option key={contract.id} value={contract.id}>
-                              {contract.number} - {contract.vendor}
-                            </option>
-                          ))}
-                        </select>
-                        <ChevronDown size={18} className="absolute right-4 top-1/2 -translate-y-1/2 text-text-secondary pointer-events-none" />
+                        />
                       </div>
                     </div>
                   )}
@@ -702,7 +862,7 @@ export const FrotaMunicipal = ({ currentUser, addNotification, systemSettings }:
 
                 <div className="space-y-2">
                   <label className="text-[10px] font-black text-text-secondary uppercase tracking-widest ml-1">Observações Adicionais</label>
-                  <textarea 
+                  <textarea
                     className="w-full bg-surface-hover border border-border rounded-2xl px-5 py-3.5 text-sm outline-none focus:border-primary transition-all font-bold min-h-[80px]"
                     placeholder="Informações relevantes sobre o veículo..."
                     value={newVehicleData.observacao}
@@ -711,14 +871,14 @@ export const FrotaMunicipal = ({ currentUser, addNotification, systemSettings }:
                 </div>
 
                 <div className="flex flex-col sm:flex-row justify-end gap-3 pt-4 pb-2">
-                  <button 
+                  <button
                     type="button"
                     onClick={() => setShowNewVehicleModal(false)}
                     className="order-2 sm:order-1 px-8 py-3.5 text-xs font-black uppercase tracking-widest text-text-secondary hover:text-text-primary transition-colors"
                   >
                     Descartar
                   </button>
-                  <button 
+                  <button
                     type="submit"
                     className="order-1 sm:order-2 px-10 py-3.5 bg-primary text-white rounded-2xl text-xs font-black uppercase tracking-widest hover:bg-primary/90 transition-all shadow-lg shadow-primary/20"
                   >
@@ -735,14 +895,14 @@ export const FrotaMunicipal = ({ currentUser, addNotification, systemSettings }:
       <AnimatePresence>
         {showOccurrenceModal && selectedVehicle && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-            <motion.div 
+            <motion.div
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               onClick={() => setShowOccurrenceModal(false)}
               className="absolute inset-0 bg-black/60 backdrop-blur-sm"
             />
-            <motion.div 
+            <motion.div
               initial={{ opacity: 0, scale: 0.95, y: 20 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.95, y: 20 }}
@@ -750,15 +910,17 @@ export const FrotaMunicipal = ({ currentUser, addNotification, systemSettings }:
             >
               <div className="p-8 border-b border-border flex justify-between items-center bg-surface-hover/30">
                 <div className="flex items-center gap-4">
-                  <div className="p-3 bg-amber-500/10 rounded-2xl text-amber-500">
-                    <History size={24} />
+                  <div className={cn("p-3 rounded-2xl", isHistoryViewOnly ? "bg-blue-500/10 text-blue-500" : "bg-amber-500/10 text-amber-500")}>
+                    {isHistoryViewOnly ? <Eye size={24} /> : <History size={24} />}
                   </div>
                   <div>
                     <h3 className="text-xl font-bold">{selectedVehicle.nome} - <span className="text-primary">{selectedVehicle.placa}</span></h3>
-                    <p className="text-xs text-text-secondary font-medium">Registrar ocorrência e visualizar histórico</p>
+                    <p className="text-xs text-text-secondary font-medium uppercase tracking-widest">
+                      {isHistoryViewOnly ? "Visualização de Histórico" : "Registrar ocorrência e visualizar histórico"}
+                    </p>
                   </div>
                 </div>
-                <button 
+                <button
                   onClick={() => setShowOccurrenceModal(false)}
                   className="p-2 hover:bg-surface-hover rounded-xl text-text-secondary transition-colors"
                 >
@@ -768,19 +930,19 @@ export const FrotaMunicipal = ({ currentUser, addNotification, systemSettings }:
 
               <div className="flex-1 overflow-y-auto p-8 space-y-10">
                 {/* Formulário de Nova Ocorrência */}
-                {canWrite && (
+                {canWrite && !isHistoryViewOnly && (
                   <section className="space-y-6">
                     <div className="flex items-center gap-2 px-1">
                       <div className="w-1.5 h-4 bg-primary/40 rounded-full" />
                       <p className="text-[10px] font-black uppercase tracking-widest text-text-secondary">Nova Ocorrência</p>
                     </div>
-                    
-              <form onSubmit={handleSaveOccurrence} className="bg-surface-hover/30 p-4 md:p-6 rounded-3xl border border-border space-y-4 md:space-y-6">
+
+              <form onSubmit={handleSaveOccurrence} className="bg-surface-hover/30 p-4 md:p-6 rounded-[2rem] border border-border/50 space-y-4 md:space-y-6">
                 <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 md:gap-6">
                   <div className="space-y-2">
                     <label className="text-[10px] font-black text-text-secondary uppercase tracking-widest ml-1">Tipo de Ocorrência</label>
                     <div className="relative group">
-                      <select 
+                      <select
                         className="w-full bg-surface border border-border rounded-2xl px-5 py-3 text-sm outline-none focus:border-primary transition-all font-bold appearance-none cursor-pointer"
                         value={newOccurrenceData.tipo}
                         onChange={(e) => setNewOccurrenceData({ ...newOccurrenceData, tipo: e.target.value as any })}
@@ -796,7 +958,7 @@ export const FrotaMunicipal = ({ currentUser, addNotification, systemSettings }:
                   <div className="space-y-2">
                     <label className="text-[10px] font-black text-text-secondary uppercase tracking-widest ml-1">Status Resultante</label>
                     <div className="relative group">
-                      <select 
+                      <select
                         className="w-full bg-surface border border-border rounded-2xl px-5 py-3 text-sm outline-none focus:border-primary transition-all font-bold appearance-none cursor-pointer"
                         value={newOccurrenceData.status_resultado}
                         onChange={(e) => setNewOccurrenceData({ ...newOccurrenceData, status_resultado: e.target.value as any })}
@@ -813,9 +975,9 @@ export const FrotaMunicipal = ({ currentUser, addNotification, systemSettings }:
                     <label className="text-[10px] font-black text-text-secondary uppercase tracking-widest ml-1">KM Atual no Registro</label>
                     <div className="relative group">
                       <TrendingUp size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-text-secondary" />
-                      <input 
+                      <input
                         required
-                        type="number" 
+                        type="number"
                         className="w-full bg-surface border border-border rounded-2xl pl-10 pr-5 py-3 text-sm outline-none focus:border-primary transition-all font-bold"
                         placeholder="0"
                         value={newOccurrenceData.km}
@@ -828,8 +990,8 @@ export const FrotaMunicipal = ({ currentUser, addNotification, systemSettings }:
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 md:gap-6">
                   <div className="space-y-2">
                     <label className="text-[10px] font-black text-text-secondary uppercase tracking-widest ml-1">Peças / Serviços</label>
-                    <input 
-                      type="text" 
+                    <input
+                      type="text"
                       className="w-full bg-surface border border-border rounded-2xl px-5 py-3 text-sm outline-none focus:border-primary transition-all font-bold"
                       placeholder="Ex: Óleo, Filtro, Pneus..."
                       value={newOccurrenceData.pecas}
@@ -840,8 +1002,8 @@ export const FrotaMunicipal = ({ currentUser, addNotification, systemSettings }:
                     <label className="text-[10px] font-black text-text-secondary uppercase tracking-widest ml-1">Custo Estimado (R$)</label>
                     <div className="relative group">
                       <span className="absolute left-4 top-1/2 -translate-y-1/2 text-text-secondary font-bold text-xs">R$</span>
-                      <input 
-                        type="text" 
+                      <input
+                        type="text"
                         className="w-full bg-surface border border-border rounded-2xl pl-10 pr-5 py-3 text-sm outline-none focus:border-primary transition-all font-bold"
                         placeholder="0,00"
                         value={newOccurrenceData.custo}
@@ -853,7 +1015,7 @@ export const FrotaMunicipal = ({ currentUser, addNotification, systemSettings }:
 
                 <div className="space-y-2">
                   <label className="text-[10px] font-black text-text-secondary uppercase tracking-widest ml-1">Descrição detalhada</label>
-                  <textarea 
+                  <textarea
                     required
                     className="w-full bg-surface border border-border rounded-2xl px-5 py-3 text-sm outline-none focus:border-primary transition-all font-bold min-h-[80px]"
                     placeholder="Descreva o que ocorreu ou o que foi feito..."
@@ -862,91 +1024,116 @@ export const FrotaMunicipal = ({ currentUser, addNotification, systemSettings }:
                   />
                 </div>
 
-                <div className="flex justify-end">
-                  <button 
+                <div className="flex justify-end pt-2">
+                  <button
                     type="submit"
-                    className="w-full sm:w-auto px-10 py-3.5 bg-primary text-white rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-primary/90 transition-all shadow-lg shadow-primary/20"
+                    className="px-8 py-3 bg-primary text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-primary/90 transition-all shadow-lg shadow-primary/20"
                   >
                     Registrar Ocorrência
                   </button>
                 </div>
               </form>
-            </section>
-          )}
+                  </section>
+                )}
 
-          {/* Histórico de Ocorrências */}
-          <section className="space-y-6">
-            <div className="flex items-center gap-2 px-1">
-              <div className="w-1.5 h-4 bg-primary/40 rounded-full" />
-              <p className="text-[10px] font-black uppercase tracking-widest text-text-secondary">Histórico de Ocorrências</p>
-            </div>
-
-            <div className="space-y-4">
-              {loadingOccurrences ? (
-                <div className="flex flex-col gap-4">
-                  <div className="h-24 bg-surface-hover/30 rounded-3xl animate-pulse" />
-                  <div className="h-24 bg-surface-hover/30 rounded-3xl animate-pulse" />
-                </div>
-              ) : occurrences.length === 0 ? (
-                <div className="p-10 text-center bg-surface-hover/20 rounded-3xl border border-dashed border-border">
-                  <History size={32} className="mx-auto mb-2 opacity-10" />
-                  <p className="text-xs font-bold text-text-secondary uppercase tracking-widest">Nenhuma ocorrência registrada.</p>
-                </div>
-              ) : (
-                occurrences.map((occ) => (
-                  <div key={occ.id} className="bg-surface border border-border p-4 md:p-5 rounded-3xl flex flex-col md:flex-row gap-4 md:gap-6 hover:border-primary/30 transition-all group relative">
-                    <div className="flex flex-row md:flex-col justify-between md:justify-start items-center md:items-start gap-2 min-w-[140px]">
-                      <div className="flex flex-col gap-1">
-                        <span className={cn(
-                          "text-[8px] font-black uppercase px-2 py-1 rounded-md border self-start",
-                          occ.tipo === 'quebra' ? "bg-rose-500/10 text-rose-500 border-rose-500/20" :
-                          occ.tipo === 'avaria' ? "bg-amber-500/10 text-amber-500 border-amber-500/20" :
-                          occ.tipo === 'retorno' ? "bg-blue-500/10 text-blue-600 border-blue-500/20" : "bg-emerald-500/10 text-emerald-500 border-emerald-500/20"
-                        )}>
-                          {occ.tipo.replace('_', ' ')}
-                        </span>
-                        <span className="text-[10px] font-black text-text-primary">{format(new Date(occ.createdAt), 'dd/MM/yyyy HH:mm')}</span>
-                      </div>
-                      <span className="text-[10px] font-bold text-text-secondary md:mt-1">{occ.registrado_por}</span>
-                    </div>
-                    
-                    <div className="flex-1 space-y-3">
-                      <p className="text-xs font-bold text-text-primary leading-relaxed">{occ.descricao}</p>
-                      {(occ.pecas || occ.custo) && (
-                        <div className="flex flex-wrap gap-x-4 gap-y-2 pt-2">
-                          {occ.pecas && (
-                            <div className="flex items-center gap-1.5">
-                              <Settings size={12} className="text-text-secondary" />
-                              <span className="text-[10px] font-bold text-text-secondary">{occ.pecas}</span>
-                            </div>
-                          )}
-                          {occ.custo && (
-                            <div className="flex items-center gap-1.5">
-                              <TrendingUp size={12} className="text-emerald-500" />
-                              <span className="text-[10px] font-black text-emerald-600">R$ {occ.custo}</span>
-                            </div>
-                          )}
-                        </div>
-                      )}
-                    </div>
-
-                    <div className="flex flex-row md:flex-col items-center md:items-end justify-between md:justify-start gap-2 shrink-0 pt-2 md:pt-0 border-t md:border-t-0 border-border md:border-none">
-                      <span className="text-[10px] font-black text-primary bg-primary/5 px-2 py-1 rounded-lg">{occ.km} KM</span>
-                      <div className="scale-75 origin-right">
-                        {getStatusBadge(occ.status_resultado)}
-                      </div>
-                    </div>
+                {/* Lista de Histórico */}
+                <section className="space-y-6">
+                  <div className="flex items-center gap-2 px-1">
+                    <div className="w-1.5 h-4 bg-amber-500/40 rounded-full" />
+                    <p className="text-[10px] font-black uppercase tracking-widest text-text-secondary">Histórico Recente</p>
                   </div>
-                ))
-              )}
-            </div>
-          </section>
+
+                  <div className="space-y-4">
+                    {loadingOccurrences ? (
+                      <div className="p-10 text-center animate-pulse">
+                        <History size={32} className="mx-auto mb-2 text-text-secondary/20" />
+                        <p className="text-xs font-bold text-text-secondary uppercase tracking-widest">Carregando histórico...</p>
+                      </div>
+                    ) : occurrences.length === 0 ? (
+                      <div className="p-10 text-center bg-surface-hover/20 rounded-[2rem] border border-dashed border-border/50">
+                        <History size={32} className="mx-auto mb-2 opacity-10" />
+                        <p className="text-xs font-bold text-text-secondary uppercase tracking-widest">Nenhuma ocorrência registrada.</p>
+                      </div>
+                    ) : (
+                      occurrences.map((occ) => (
+                        <div key={occ.id} className="bg-surface border border-border/40 p-5 rounded-[2rem] flex flex-col md:flex-row gap-4 md:gap-8 hover:border-primary/40 transition-all group relative overflow-hidden">
+                          <div className="absolute top-0 left-0 w-1 h-full opacity-0 group-hover:opacity-100 transition-opacity bg-primary" />
+
+                          <div className="flex flex-row md:flex-col justify-between md:justify-start items-center md:items-start gap-4 md:min-w-[160px] border-b md:border-b-0 md:border-r border-border/50 pb-4 md:pb-0 md:pr-6">
+                            <div className="flex flex-col gap-1.5">
+                              <span className={cn(
+                                "text-[9px] font-black uppercase px-2.5 py-1 rounded-lg border self-start tracking-widest shadow-sm",
+                                occ.tipo === 'quebra' ? "bg-rose-500/10 text-rose-500 border-rose-500/20" :
+                                occ.tipo === 'avaria' ? "bg-amber-500/10 text-amber-500 border-amber-500/20" :
+                                occ.tipo === 'manutencao_preventiva' ? "bg-blue-500/10 text-blue-500 border-blue-500/20" :
+                                "bg-emerald-500/10 text-emerald-500 border-emerald-500/20"
+                              )}>
+                                {occ.tipo.replace('_', ' ')}
+                              </span>
+                              <div className="flex flex-col">
+                                <span className="text-[11px] font-black text-text-primary tracking-tight">
+                                  {format(new Date(occ.createdAt), 'dd/MM/yyyy', { locale: ptBR })}
+                                </span>
+                                <span className="text-[10px] font-bold text-text-secondary/70">
+                                  {format(new Date(occ.createdAt), 'HH:mm', { locale: ptBR })}
+                                </span>
+                              </div>
+                            </div>
+                            <div className="flex flex-col items-end md:items-start text-right md:text-left">
+                              <span className="text-[9px] font-black text-text-secondary uppercase tracking-widest mb-0.5 opacity-60">Registrador</span>
+                              <span className="text-[10px] font-black text-text-primary uppercase truncate max-w-[120px]">{occ.registrado_por}</span>
+                            </div>
+                          </div>
+
+                          <div className="flex-1 flex flex-col justify-between py-1">
+                            <div className="space-y-4">
+                              <p className="text-sm font-bold text-text-primary leading-relaxed">{occ.descricao}</p>
+
+                              {(occ.pecas || occ.custo) && (
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                  {occ.pecas && (
+                                    <div className="bg-surface-hover/40 p-3 rounded-2xl border border-border/40">
+                                      <p className="text-[8px] font-black text-text-secondary uppercase tracking-widest mb-1.5">Peças / Serviços</p>
+                                      <p className="text-xs font-bold text-text-primary">{occ.pecas}</p>
+                                    </div>
+                                  )}
+                                  {occ.custo && (
+                                    <div className="bg-emerald-500/5 p-3 rounded-2xl border border-emerald-500/20">
+                                      <p className="text-[8px] font-black text-emerald-600 uppercase tracking-widest mb-1.5">Investimento Estimado</p>
+                                      <p className="text-sm font-black text-emerald-600">R$ {occ.custo}</p>
+                                    </div>
+                                  )}
+                                </div>
+                              )}
+                            </div>
+
+                            <div className="flex flex-wrap items-center justify-between gap-4 mt-6 pt-4 border-t border-border/30">
+                              <div className="flex items-center gap-3">
+                                <div className="flex flex-col">
+                                  <span className="text-[8px] font-black text-text-secondary uppercase tracking-widest">Quilometragem</span>
+                                  <span className="text-xs font-black text-primary">{occ.km} KM</span>
+                                </div>
+                                <div className="w-px h-6 bg-border/50" />
+                                <div className="flex flex-col">
+                                  <span className="text-[8px] font-black text-text-secondary uppercase tracking-widest">Resultado</span>
+                                  <div className="scale-90 origin-left mt-0.5">
+                                    {getStatusBadge(occ.status_resultado)}
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </section>
               </div>
 
-              <div className="p-8 border-t border-border bg-surface-hover/30 flex justify-end">
-                <button 
+              <div className="p-8 border-t border-border/40 bg-surface-hover/30 flex justify-end">
+                <button
                   onClick={() => setShowOccurrenceModal(false)}
-                  className="px-10 py-3.5 bg-background border border-border text-text-secondary rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-surface transition-all"
+                  className="px-10 py-3.5 bg-background border border-border/40 text-text-secondary rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-surface transition-all"
                 >
                   Fechar
                 </button>

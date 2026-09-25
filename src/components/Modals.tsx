@@ -115,6 +115,11 @@ interface ModalsProps {
   canDelete?: boolean;
   handleDeleteDaily?: (id: string) => void;
   handleDeleteChecklist?: (id: string) => void;
+  showImportMonthModal: boolean;
+  setShowImportMonthModal: (show: boolean) => void;
+  selectedImportMonth: string;
+  setSelectedImportMonth: (month: string) => void;
+  proceedWithImportFuel: (month: string) => void;
 }
 
 export const Modals = ({
@@ -132,8 +137,10 @@ export const Modals = ({
   showCriticalModal, setShowCriticalModal, criticalContracts,
   showSelectedChecklistReport, setShowSelectedChecklistReport,
   handleGenerateAIItems, isGeneratingAI, newItemLabel, setNewItemLabel, handleAddItem, handleRemoveItem, contracts, servidores = [],
-  canDelete, handleDeleteDaily, handleDeleteChecklist
+  canDelete, handleDeleteDaily, handleDeleteChecklist,
+  showImportMonthModal, setShowImportMonthModal, selectedImportMonth, setSelectedImportMonth, proceedWithImportFuel
 }: ModalsProps) => {
+  const months = ['janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho', 'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro'];
   const [newTramitation, setNewTramitation] = React.useState({ sector: '', action: '' });
   const [showTramitationForm, setShowTramitationForm] = React.useState(false);
   const [isSavingTramitation, setIsSavingTramitation] = React.useState(false);
@@ -2052,6 +2059,90 @@ export const Modals = ({
                   </button>
                 </div>
               </form>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Modal de Seleção de Mês para Importação */}
+      <AnimatePresence>
+        {showImportMonthModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setShowImportMonthModal(false)}
+              className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+            />
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 20 }}
+              className="relative w-full max-w-md bg-surface border border-border rounded-[2.5rem] shadow-2xl overflow-hidden"
+            >
+              <div className="p-8 border-b border-border flex justify-between items-center bg-surface-hover/30">
+                <div className="flex items-center gap-4">
+                  <div className="p-3 bg-primary/10 rounded-2xl text-primary">
+                    <Calendar size={24} />
+                  </div>
+                  <div>
+                    <h3 className="text-xl font-bold">Mês da Planilha</h3>
+                    <p className="text-xs text-text-secondary font-medium uppercase tracking-widest">Importação de Combustível</p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setShowImportMonthModal(false)}
+                  className="p-2 hover:bg-surface-hover rounded-xl text-text-secondary transition-colors"
+                >
+                  <X size={24} />
+                </button>
+              </div>
+
+              <div className="p-8 space-y-6">
+                <div className="bg-amber-500/5 border border-amber-500/10 p-4 rounded-2xl flex gap-3">
+                  <AlertCircle size={20} className="text-amber-500 shrink-0" />
+                  <p className="text-xs font-medium text-amber-700 leading-relaxed">
+                    Selecione o mês referente aos dados desta planilha para que os registros fiquem organizados corretamente no sistema.
+                  </p>
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-[10px] font-black text-text-secondary uppercase tracking-widest ml-1">Selecione o Mês</label>
+                  <div className="grid grid-cols-2 gap-2">
+                    {months.map((m) => (
+                      <button
+                        key={m}
+                        onClick={() => setSelectedImportMonth(m)}
+                        className={cn(
+                          "px-4 py-3 rounded-xl text-xs font-black uppercase tracking-widest border transition-all active:scale-95",
+                          selectedImportMonth === m
+                            ? "bg-primary text-white border-primary shadow-lg shadow-primary/20"
+                            : "bg-surface-hover border-border text-text-secondary hover:border-primary/40"
+                        )}
+                      >
+                        {m}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="flex flex-col gap-3 pt-4">
+                  <button
+                    onClick={() => proceedWithImportFuel(selectedImportMonth)}
+                    className="w-full py-4 bg-primary text-white rounded-2xl font-black text-xs uppercase tracking-widest hover:bg-primary/90 transition-all shadow-xl shadow-primary/20 flex items-center justify-center gap-2"
+                  >
+                    <Check size={18} />
+                    Confirmar e Importar
+                  </button>
+                  <button
+                    onClick={() => setShowImportMonthModal(false)}
+                    className="w-full py-4 text-xs font-black uppercase tracking-widest text-text-secondary hover:text-text-primary transition-colors"
+                  >
+                    Cancelar
+                  </button>
+                </div>
+              </div>
             </motion.div>
           </div>
         )}

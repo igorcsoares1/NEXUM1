@@ -16,6 +16,7 @@ import {
   Settings
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
+import { format } from 'date-fns';
 import { cn } from '../lib/utils';
 import { FuelRecord, User } from '../types';
 import { StatCard } from '../components/ui/StatCard';
@@ -90,20 +91,26 @@ const Combustivel = ({
 }: CombustivelProps) => {
   // FIX: Ref para o input de arquivo
   const fileInputRef = React.useRef<HTMLInputElement>(null);
+  const [showVehicleSummary, setShowVehicleSummary] = React.useState(true);
   const months = ['janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho', 'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro'];
   
   const totalLiters = filteredFuelRecords.reduce((acc, r) => acc + (parseFloat(r.quantity?.toString() || '0')), 0);
   const totalCost = filteredFuelRecords.reduce((acc, r) => acc + parseCurrencyToNumber(r.cost), 0);
 
-  const vehicleSummary = filteredFuelRecords.reduce((acc, record) => {
+  const vehicleSummaryByMonth = filteredFuelRecords.reduce((acc, record) => {
+    const month = record.month?.toLowerCase() || 'sem mês';
     const vehicle = record.vehicle || 'Sem Veículo';
-    if (!acc[vehicle]) {
-      acc[vehicle] = { liters: 0, cost: 0 };
+    
+    if (!acc[month]) {
+      acc[month] = {};
     }
-    acc[vehicle].liters += parseFloat(record.quantity?.toString() || '0');
-    acc[vehicle].cost += parseCurrencyToNumber(record.cost);
+    if (!acc[month][vehicle]) {
+      acc[month][vehicle] = { liters: 0, cost: 0 };
+    }
+    acc[month][vehicle].liters += parseFloat(record.quantity?.toString() || '0');
+    acc[month][vehicle].cost += parseCurrencyToNumber(record.cost);
     return acc;
-  }, {} as Record<string, { liters: number; cost: number }>);
+  }, {} as Record<string, Record<string, { liters: number; cost: number }>>);
 
   const getStatusConfig = (status: string) => {
     switch (status?.toLowerCase()) {
@@ -157,6 +164,16 @@ const Combustivel = ({
               >
                 <Printer size={20} />
               </button>
+              <label className="p-2 rounded-full hover:bg-surface-hover text-text-secondary active:scale-95 transition-colors cursor-pointer">
+                <FileText size={20} />
+                <input
+                  type="file"
+                  accept=".xlsx,.xls,.csv"
+                  className="hidden"
+                  onChange={handleImportFuel}
+                  disabled={isImporting}
+                />
+              </label>
             </div>
           </div>
 
@@ -421,28 +438,74 @@ const Combustivel = ({
           <StatCard title="Média Ponderada" value="12.4 km/L" icon={<TrendingUp size={24} />} />
         </div>
 
-        <div className='glass-card p-6 mb-6'>
-          <h3 className='text-lg font-bold text-text-primary mb-4'>Resumo por Veículo</h3>
-          <div className='overflow-x-auto'>
-            <table className='w-full text-sm'>
-              <thead>
-                <tr className='border-b border-border'>
-                  <th className='text-left py-2 font-bold'>Veículo</th>
-                  <th className='text-right py-2 font-bold'>Litros</th>
-                  <th className='text-right py-2 font-bold'>Valor Total</th>
-                </tr>
-              </thead>
-              <tbody>
-                {Object.entries(vehicleSummary).map(([vehicle, data]) => (
-                  <tr key={vehicle} className='border-b border-border/30 hover:bg-surface-hover'>
-                    <td className='py-3'>{vehicle}</td>
-                    <td className='text-right py-3 font-bold'>{data.liters.toFixed(1)} L</td>
-                    <td className='text-right py-3 font-bold text-primary'>R$ {data.cost.toLocaleString('pt-BR', {minimumFractionDigits: 2})}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+        <div className='glass-card p-6 mb-6 overflow-hidden'>
+          <div className="flex items-center justify-between mb-4">
+            <h3 className='text-lg font-bold text-text-primary flex items-center gap-2'>
+              <BarChart3 size={20} className="text-primary" />
+              Resumo por Veículo
+            </h3>
+            <button
+              onClick={() => setShowVehicleSummary(!showVehicleSummary)}
+              className="px-4 py-2 rounded-xl bg-surface-hover border border-border text-xs font-black uppercase tracking-widest hover:border-primary/50 transition-all flex items-center gap-2"
+            >
+              {showVehicleSummary ? (
+                <>Ocultar <Settings size={14} className="rotate-180" /></>
+              ) : (
+                <>Mostrar <Settings size={14} /></>
+              )}
+            </button>
           </div>
+          
+          <AnimatePresence>
+            {showVehicleSummary && (
+              <motion.div
+                initial={{ height: 0, opacity: 0 }}
+                animate={{ height: 'auto', opacity: 1 }}
+                exit={{ height: 0, opacity: 0 }}
+                className="space-y-6"
+              >
+                {Object.entries(vehicleSummaryByMonth).length === 0 ? (
+                  <p className="text-center py-8 text-text-secondary font-medium">Nenhum dado para resumir.</p>
+                ) : (
+                  Object.entries(vehicleSummaryByMonth).sort((a, b) => {
+                    const idxA = months.indexOf(a[0].toLowerCase());
+                    const idxB = months.indexOf(b[0].toLowerCase());
+                    return idxB - idxA; // Ordenar meses mais recentes primeiro
+                  }).map(([month, vehicles]) => (
+                    <div key={month} className="space-y-3">
+                      <div className="flex items-center gap-2">
+                        <span className="h-px flex-1 bg-border/50"></span>
+                        <span className="text-[10px] font-black uppercase tracking-[0.2em] text-primary bg-primary/5 px-3 py-1 rounded-full border border-primary/10">
+                          {month}
+                        </span>
+                        <span className="h-px flex-1 bg-border/50"></span>
+                      </div>
+                      <div className='overflow-x-auto'>
+                        <table className='w-full text-sm'>
+                          <thead>
+                            <tr className='text-text-secondary text-[10px] uppercase tracking-widest border-b border-border/50'>
+                              <th className='text-left py-3 font-bold'>Veículo</th>
+                              <th className='text-right py-3 font-bold'>Litros</th>
+                              <th className='text-right py-3 font-bold'>Valor Total</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {Object.entries(vehicles).map(([vehicle, data]) => (
+                              <tr key={vehicle} className='border-b border-border/20 hover:bg-surface-hover/30 transition-colors'>
+                                <td className='py-3 font-medium text-text-primary'>{vehicle}</td>
+                                <td className='text-right py-3 font-black text-text-secondary'>{data.liters.toFixed(1)} L</td>
+                                <td className='text-right py-3 font-black text-emerald-500'>R$ {data.cost.toLocaleString('pt-BR', {minimumFractionDigits: 2})}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </motion.div>
+            )}
+          </AnimatePresence>
         </div>
 
         <div className="glass-card overflow-hidden">

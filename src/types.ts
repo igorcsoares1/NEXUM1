@@ -214,6 +214,10 @@ export interface Vehicle {
   nome: string;
   placa: string;
   ano: string;
+  cor?: string;
+  combustivel?: string;
+  renavam?: string;
+  chassi?: string;
   secretaria: string;
   km_atual: string;
   status: 'em_dia' | 'parado' | 'manutencao' | 'em_uso';

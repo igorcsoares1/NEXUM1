@@ -228,6 +228,9 @@ export default function App() {
   const [usersPage, setUsersPage] = useState(1);
   const [usersPerPage, setUsersPerPage] = useState(10);
   const [activityLogs, setActivityLogs] = useState<ActivityLog[]>([]);
+  const [showImportMonthModal, setShowImportMonthModal] = useState(false);
+  const [selectedImportMonth, setSelectedImportMonth] = useState('');
+  const [pendingImportFile, setPendingImportFile] = useState<File | null>(null);
 
   const refreshLogs = async () => {
     if (currentUser?.prefeituraId) {
@@ -798,7 +801,19 @@ export default function App() {
   const handleImportFuelLocal = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+    setPendingImportFile(file);
+    const currentMonth = format(new Date(), 'MMMM', { locale: ptBR });
+    setSelectedImportMonth(currentMonth);
+    setShowImportMonthModal(true);
+    // Reset input
+    e.target.value = '';
+  };
+
+  const proceedWithImportFuel = async (month: string) => {
+    if (!pendingImportFile) return;
+    const file = pendingImportFile;
     setIsImporting(true);
+    setShowImportMonthModal(false);
     try {
       const XLSX = await import('xlsx');
       const reader = new FileReader();
@@ -807,7 +822,7 @@ export default function App() {
           const data = event.target?.result;
           const workbook = XLSX.read(data, { type: 'binary' });
           
-          const monthInput = 'importado';
+          const monthInput = month.toLowerCase();
 
           const records: any[] = [];
           const today = format(new Date(), 'yyyy-MM-dd');
@@ -833,17 +848,18 @@ export default function App() {
               if (liters === 0 || unitPrice === 0 || totalCost === 0) continue;
 
               records.push({
-  vehicle: vehicle,
-  driver: '',
-  date: today,
-  quantity: liters,
-  cost: totalCost,
-  status: 'concluido',
-  fuelType: fuelType.toUpperCase(),
-  unitPrice: unitPrice,
-  plate: '',
-  prefeituraId: currentUser?.prefeituraId || '1'
-});
+                vehicle: vehicle,
+                driver: '',
+                date: today,
+                quantity: liters,
+                cost: totalCost,
+                status: 'concluido',
+                fuelType: fuelType.toUpperCase(),
+                unitPrice: unitPrice,
+                plate: '',
+                month: monthInput,
+                prefeituraId: currentUser?.prefeituraId || '1'
+              });
             }
           }
 
@@ -856,13 +872,13 @@ export default function App() {
           }
 
           await fetchFuelRecords();
-          addNotification('Sucesso', records.length + ' registros importados!', 'success');
+          addNotification('Sucesso', records.length + ' registros importados para o mês de ' + monthInput + '!', 'success');
         } catch (err: any) {
           console.error('Erro:', err);
           addNotification('Erro', err.message || 'Erro ao processar', 'error');
         } finally {
           setIsImporting(false);
-          if (e.target) e.target.value = '';
+          setPendingImportFile(null);
         }
       };
       reader.readAsBinaryString(file);
@@ -1710,6 +1726,11 @@ export default function App() {
       canDelete={canDelete}
       handleDeleteDaily={handleDeleteDaily}
       handleDeleteChecklist={handleDeleteChecklist}
+      showImportMonthModal={showImportMonthModal}
+      setShowImportMonthModal={setShowImportMonthModal}
+      selectedImportMonth={selectedImportMonth}
+      setSelectedImportMonth={setSelectedImportMonth}
+      proceedWithImportFuel={proceedWithImportFuel}
     />
   );
 

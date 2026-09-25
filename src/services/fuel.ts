@@ -1,4 +1,5 @@
-import { format } from 'date-fns';
+import { format, parseISO } from 'date-fns';
+import { ptBR } from 'date-fns/locale';
 import { supabase } from '../lib/supabase';
 import { FuelRecord, User, Servidor } from '../types';
 
@@ -15,6 +16,10 @@ export const handleSaveFuel = async (
   addNotification: (title: string, message: string, type: any) => void
 ) => {
   try {
+    // Determine month from date if not present
+    const recordDate = newFuelData.date ? parseISO(newFuelData.date) : new Date();
+    const month = newFuelData.month || format(recordDate, 'MMMM', { locale: ptBR });
+
     if (newFuelData.driver) {
       const driverName = newFuelData.driver.trim();
       const existingServidor = servidores.find(s => s.name.trim().toLowerCase() === driverName.toLowerCase());
@@ -37,7 +42,8 @@ export const handleSaveFuel = async (
       const { error } = await supabase
         .from('fuelRecords')
         .update({
-          ...newFuelData
+          ...newFuelData,
+          month: month.toLowerCase()
         })
         .eq('id', editingFuel.id);
       
@@ -47,6 +53,7 @@ export const handleSaveFuel = async (
         .from('fuelRecords')
         .insert({
           ...newFuelData,
+          month: month.toLowerCase(),
           prefeituraId: currentUser.prefeituraId || '1'
         });
       
