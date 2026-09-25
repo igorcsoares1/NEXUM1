@@ -9,6 +9,7 @@ import {
   UserCircle, 
   BarChart3, 
   FileBarChart,
+  Truck,
   LogOut,
   Settings,
   Users,
@@ -50,6 +51,11 @@ export const Sidebar = ({
     
     // Superadmin has access to everything
     if (currentUser.role === 'superadmin') return true;
+
+    // Roles with specific module access by default
+    if (view === 'frota' && ['admin', 'gestor', 'transportes'].includes(currentUser.role)) {
+      return true;
+    }
 
     // Explicitly block visualizador from Notas Fiscais as requested
     if (currentUser.role === 'visualizador' && view === 'notas_fiscais') {
@@ -144,6 +150,14 @@ export const Sidebar = ({
               label="Combustível" 
               active={activeView === 'combustivel'} 
               onClick={() => { setActiveView('combustivel'); setIsSidebarOpen(false); }} 
+            />
+          )}
+          {hasPermission('frota') && (
+            <SidebarItem 
+              icon={Truck} 
+              label="Frota Municipal" 
+              active={activeView === 'frota'} 
+              onClick={() => { setActiveView('frota'); setIsSidebarOpen(false); }} 
             />
           )}
           {hasPermission('diarias') && (

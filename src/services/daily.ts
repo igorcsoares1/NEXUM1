@@ -1,3 +1,4 @@
+import { format } from 'date-fns';
 import { supabase } from '../lib/supabase';
 import { DailyRecord, User, Servidor } from '../types';
 
@@ -103,7 +104,7 @@ export const handleSaveDaily = async (
     const dailyData: any = {
       ...newDailyData,
       driver: cleanBeneficiaryName,
-      date: (newDailyData as any).departureDate || newDailyData.date || new Date().toISOString().split('T')[0],
+      date: (newDailyData as any).departureDate || newDailyData.date || format(new Date(), 'yyyy-MM-dd'),
       servidorId: servidorId || '',
       value: (newDailyData.value || '').replace(/[R$\s.]/g, '').replace(',', '.')
     };
@@ -206,7 +207,7 @@ export const handleSaveDaily = async (
       beneficiary: '',
       servidorId: '',
       destination: '',
-      departureDate: new Date().toISOString().split('T')[0],
+      departureDate: format(new Date(), 'yyyy-MM-dd'),
       returnDate: '',
       purpose: '',
       value: '',

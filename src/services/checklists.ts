@@ -272,7 +272,7 @@ export const handleSaveChecklist = async (
       value: newChecklistData.value,
       invoiceValue: newChecklistData.invoiceValue,
       invoiceNumber: newChecklistData.invoiceNumber,
-      submissionDate: editingChecklist ? newChecklistData.submissionDate : new Date().toISOString().split('T')[0],
+      submissionDate: editingChecklist ? newChecklistData.submissionDate : format(new Date(), 'yyyy-MM-dd'),
       status: finalStatus,
       currentSector: finalSector,
       history: finalHistory,
@@ -372,7 +372,7 @@ export const handleSaveChecklist = async (
       value: '',
       invoiceValue: '',
       invoiceNumber: '',
-      submissionDate: new Date().toISOString().split('T')[0],
+      submissionDate: format(new Date(), 'yyyy-MM-dd'),
       status: 'em_analise',
       items: DEFAULT_CHECKLIST_ITEMS.map(item => ({ ...item, id: crypto.randomUUID() }))
     });

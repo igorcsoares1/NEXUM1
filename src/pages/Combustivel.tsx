@@ -313,7 +313,7 @@ const Combustivel = ({
                 prefeituraId: currentUser.prefeituraId || '1',
                 vehicle: '',
                 driver: '',
-                date: new Date().toISOString().split('T')[0],
+                date: format(new Date(), 'yyyy-MM-dd'),
                 quantity: '',
                 cost: '',
                 status: 'concluido'
@@ -399,7 +399,7 @@ const Combustivel = ({
                     prefeituraId: currentUser.prefeituraId || '1',
                     vehicle: '',
                     driver: '',
-                    date: new Date().toISOString().split('T')[0],
+                    date: format(new Date(), 'yyyy-MM-dd'),
                     quantity: '',
                     cost: '',
                     status: 'concluido'

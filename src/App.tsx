@@ -57,6 +57,7 @@ import Combustivel from './pages/Combustivel';
 import Diarias from './pages/Diarias';
 import Contratos from './pages/Contratos';
 import Relatorios from './pages/Relatorios';
+import { FrotaMunicipal } from './pages/FrotaMunicipal';
 import Usuarios from './pages/Usuarios';
 import Servidores from './pages/Servidores';
 import Protocolo from './pages/Protocolo';
@@ -193,7 +194,7 @@ export default function App() {
   // Sync activeView with URL
   useEffect(() => {
     const path = location.pathname.split('/')[1] || 'dashboard';
-    const validViews = ['dashboard', 'combustivel', 'diarias', 'checklists', 'contratos', 'notas_fiscais', 'usuarios', 'relatorios', 'prefeituras', 'configuracoes', 'protocolo-entrada', 'protocolo-saida', 'protocolo-processos', 'protocolo-tramitacao', 'protocolo-pendencias', 'protocolo-arquivos', 'manual', 'relatorio_executivo'];
+    const validViews = ['dashboard', 'combustivel', 'frota', 'diarias', 'checklists', 'contratos', 'notas_fiscais', 'usuarios', 'relatorios', 'prefeituras', 'configuracoes', 'protocolo-entrada', 'protocolo-saida', 'protocolo-processos', 'protocolo-tramitacao', 'protocolo-pendencias', 'protocolo-arquivos', 'manual', 'relatorio_executivo'];
     if (validViews.includes(path)) {
       setActiveView(path as View);
     }
@@ -321,11 +322,11 @@ export default function App() {
     () => {
       const d = new Date();
       d.setMonth(d.getMonth() - 6);
-      return d.toISOString().split('T')[0];
+      return format(d, 'yyyy-MM-dd');
     }
   );
   const [dashboardEndDate, setDashboardEndDate] = useState(
-    () => new Date().toISOString().split('T')[0]
+    () => format(new Date(), 'yyyy-MM-dd')
   );
 
   const dashboardFilteredData = useMemo(() => {
@@ -485,7 +486,7 @@ export default function App() {
     value: '',
     invoiceValue: '',
     invoiceNumber: '',
-    submissionDate: new Date().toISOString().split('T')[0],
+    submissionDate: format(new Date(), 'yyyy-MM-dd'),
     status: 'em_analise',
     items: [],
     stepsCompleted: 0,
@@ -615,7 +616,7 @@ export default function App() {
     prefeituraId: '1',
     vehicle: '',
     driver: '',
-    date: new Date().toISOString().split('T')[0],
+    date: format(new Date(), 'yyyy-MM-dd'),
     quantity: '',
     cost: '',
     status: 'concluido',
@@ -636,8 +637,8 @@ export default function App() {
     registrationNumber: '',
     servidorId: '',
     destination: '',
-    date: new Date().toISOString().split('T')[0],
-    departureDate: new Date().toISOString().split('T')[0],
+    date: format(new Date(), 'yyyy-MM-dd'),
+    departureDate: format(new Date(), 'yyyy-MM-dd'),
     returnDate: '',
     purpose: '',
     value: '',
@@ -809,7 +810,7 @@ export default function App() {
           const monthInput = 'importado';
 
           const records: any[] = [];
-          const today = new Date().toISOString().split('T')[0];
+          const today = format(new Date(), 'yyyy-MM-dd');
 
           for (const sheetName of workbook.SheetNames) {
             if (sheetName.toLowerCase().includes('total')) continue;
@@ -926,7 +927,7 @@ export default function App() {
       }
 
       // Para relatório geral ou outros tipos, usar o gerador de screenshot melhorado
-      const filename = `relatorio_${reportName}_${new Date().toISOString().split('T')[0]}.pdf`;
+      const filename = `relatorio_${reportName}_${format(new Date(), 'yyyyMMdd')}.pdf`;
       await generateReportPDF('report-content', filename, setIsExportingPDF);
     } catch (error) {
       console.error('Erro ao gerar PDF:', error);
@@ -1749,6 +1750,11 @@ export default function App() {
       if (!currentUser) return false;
       if (currentUser.role === 'superadmin') return true;
       
+      // Module specific defaults
+      if (view === 'frota' && ['admin', 'gestor', 'transportes'].includes(currentUser.role)) {
+        return true;
+      }
+
       if (Array.isArray(currentUser.permissions)) {
         return currentUser.permissions.includes(view);
       }
@@ -1833,6 +1839,8 @@ export default function App() {
             setShowDeleteConfirm={setShowDeleteConfirm}
           />
         );
+      case 'frota':
+        return <FrotaMunicipal currentUser={currentUser} addNotification={addNotification} systemSettings={systemSettings} />;
       case 'diarias':
         return (
           <Diarias

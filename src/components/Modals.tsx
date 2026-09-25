@@ -837,68 +837,95 @@ export const Modals = ({
                 </div>
 
                 {/* Seção das Etapas */}
-                <div className="space-y-4 pt-4 border-t border-border">
-                  <div className="flex justify-between items-center">
-                    <label className="text-[10px] font-black text-text-secondary uppercase tracking-widest ml-1">Documentação e Etapas</label>
+                <div className="space-y-6 pt-6 border-t border-border">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                    <div>
+                      <label className="text-[10px] font-black text-text-secondary uppercase tracking-widest ml-1">Documentação e Etapas</label>
+                      <p className="text-[11px] text-text-secondary font-medium ml-1">Gerencie os requisitos do processo</p>
+                    </div>
                     <button 
                       type="button"
                       onClick={handleGenerateAIItems}
                       disabled={isGeneratingAI || (!newChecklistData.object && !newChecklistData.processNumber)}
-                      className="flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-primary hover:bg-primary/10 px-4 py-2 rounded-xl transition-all disabled:opacity-50"
+                      className="flex items-center justify-center gap-2 text-[10px] font-black uppercase tracking-widest text-primary bg-primary/5 hover:bg-primary/10 border border-primary/20 px-4 py-2.5 rounded-xl transition-all disabled:opacity-50 group"
                     >
                       {isGeneratingAI ? (
-                        <div className="w-3 h-3 border-2 border-primary/30 border-t-primary rounded-full animate-spin" />
+                        <RefreshCw size={14} className="animate-spin" />
                       ) : (
-                        <Plus size={14} />
+                        <div className="relative">
+                          <Plus size={14} className="group-hover:rotate-90 transition-transform" />
+                          <div className="absolute -top-1 -right-1 w-2 h-2 bg-primary rounded-full animate-ping" />
+                        </div>
                       )}
-                      Sugerir com IA
+                      Inteligência Artificial
                     </button>
                   </div>
 
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                    {newChecklistData.items?.map((item: any) => (
-                      <div 
-                        key={item.id}
-                        className={cn(
-                          "flex items-center gap-3 p-3 rounded-xl border text-[10px] font-black uppercase tracking-tight text-left transition-all",
-                          item.checked 
-                            ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-600" 
-                            : "bg-surface-hover/50 border-border text-text-secondary"
-                        )}
-                      >
-                        <button
-                          type="button"
-                          onClick={() => {
-                            const newItems = newChecklistData.items.map((i: any) => 
-                              i.id === item.id ? { ...i, checked: !i.checked } : i
-                            );
-                            setNewChecklistData({ ...newChecklistData, items: newItems });
-                          }}
+                  {/* Lista de Itens Atuais */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <AnimatePresence mode="popLayout">
+                      {newChecklistData.items?.map((item: any) => (
+                        <motion.div 
+                          layout
+                          initial={{ opacity: 0, scale: 0.9 }}
+                          animate={{ opacity: 1, scale: 1 }}
+                          exit={{ opacity: 0, scale: 0.9 }}
+                          key={item.id}
                           className={cn(
-                            "w-5 h-5 rounded-md flex items-center justify-center border transition-all shrink-0",
-                            item.checked ? "bg-emerald-500 border-emerald-500 text-white" : "bg-surface border-border text-transparent"
+                            "flex items-center gap-3 p-3.5 rounded-2xl border transition-all group relative overflow-hidden",
+                            item.checked 
+                              ? "bg-emerald-500/5 border-emerald-500/20 shadow-sm" 
+                              : "bg-surface border-border/60 hover:border-primary/40"
                           )}
                         >
-                          <Check size={12} strokeWidth={4} />
-                        </button>
-                        <span className="flex-1 truncate">{item.label}</span>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            const newItems = newChecklistData.items.filter((i: any) => i.id !== item.id);
-                            setNewChecklistData({ ...newChecklistData, items: newItems });
-                          }}
-                          className="p-1 hover:bg-rose-500/10 text-text-secondary hover:text-rose-500 rounded transition-colors"
-                        >
-                          <X size={14} />
-                        </button>
-                      </div>
-                    ))}
+                          {item.checked && (
+                            <div className="absolute left-0 top-0 bottom-0 w-1 bg-emerald-500" />
+                          )}
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const newItems = newChecklistData.items.map((i: any) => 
+                                i.id === item.id ? { ...i, checked: !i.checked } : i
+                              );
+                              setNewChecklistData({ ...newChecklistData, items: newItems });
+                            }}
+                            className={cn(
+                              "w-6 h-6 rounded-lg flex items-center justify-center border-2 transition-all shrink-0",
+                              item.checked 
+                                ? "bg-emerald-500 border-emerald-500 text-white shadow-lg shadow-emerald-500/20" 
+                                : "bg-background border-border text-transparent hover:border-primary/50"
+                            )}
+                          >
+                            <Check size={14} strokeWidth={4} />
+                          </button>
+                          <span className={cn(
+                            "flex-1 text-[11px] font-bold uppercase tracking-tight truncate",
+                            item.checked ? "text-emerald-700" : "text-text-primary"
+                          )} title={item.label}>
+                            {item.label}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const newItems = newChecklistData.items.filter((i: any) => i.id !== item.id);
+                              setNewChecklistData({ ...newChecklistData, items: newItems });
+                            }}
+                            className="w-8 h-8 flex items-center justify-center hover:bg-rose-500/10 text-text-secondary hover:text-rose-500 rounded-xl transition-all opacity-0 group-hover:opacity-100"
+                          >
+                            <X size={16} />
+                          </button>
+                        </motion.div>
+                      ))}
+                    </AnimatePresence>
                   </div>
 
-                  <div className="space-y-4 pt-4 border-t border-border">
-                    <p className="text-[10px] font-black uppercase tracking-widest text-text-secondary ml-1">Adicionar Novos Itens</p>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  {/* Sugestões Rápidas */}
+                  <div className="space-y-4 bg-surface-hover/20 rounded-[2rem] p-5 border border-border/40">
+                    <div className="flex items-center gap-2 px-1">
+                      <div className="w-1.5 h-4 bg-primary/40 rounded-full" />
+                      <p className="text-[10px] font-black uppercase tracking-widest text-text-secondary">Sugestões Rápidas</p>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
                       {DEFAULT_CHECKLIST_DOCUMENTS.filter(docName => 
                         !newChecklistData.items?.some((i: any) => i.label === docName)
                       ).map((docName) => (
@@ -909,20 +936,24 @@ export const Modals = ({
                             const newItem = { id: crypto.randomUUID(), label: docName, checked: false };
                             setNewChecklistData({ ...newChecklistData, items: [...(newChecklistData.items || []), newItem] });
                           }}
-                          className="flex items-center gap-3 p-3 rounded-xl border border-border bg-surface-hover/30 text-[10px] font-black uppercase tracking-tight text-left hover:border-primary/50 transition-all text-text-secondary"
+                          className="flex items-center gap-2.5 px-4 py-2.5 rounded-xl border border-border/60 bg-surface text-[10px] font-bold uppercase tracking-tight text-text-secondary hover:border-primary hover:text-primary hover:bg-primary/5 transition-all active:scale-95 shadow-sm"
                         >
-                          <Plus size={14} className="text-primary" />
-                          <span className="flex-1">{docName}</span>
+                          <Plus size={14} />
+                          {docName}
                         </button>
                       ))}
+                      {(!DEFAULT_CHECKLIST_DOCUMENTS.some(docName => !newChecklistData.items?.some((i: any) => i.label === docName))) && (
+                        <p className="text-[10px] font-bold text-text-secondary italic px-2">Todas as sugestões padrão foram adicionadas.</p>
+                      )}
                     </div>
                   </div>
 
-                  <div className="flex gap-2">
+                  {/* Adição Manual */}
+                  <div className="flex gap-2 bg-background p-2 rounded-2xl border border-border/40 shadow-inner">
                     <input 
                       type="text" 
-                      placeholder="Adicionar etapa manualmente..."
-                      className="flex-1 bg-surface-hover border border-border rounded-xl px-4 py-3 text-sm outline-none focus:border-primary transition-all font-bold shadow-inner"
+                      placeholder="Adicionar documento personalizado..."
+                      className="flex-1 bg-transparent border-none rounded-xl px-4 py-3 text-sm outline-none font-bold placeholder:text-text-secondary/50"
                       value={newItemLabel}
                       onChange={(e) => setNewItemLabel(e.target.value)}
                       onKeyPress={(e) => e.key === 'Enter' && (e.preventDefault(), handleAddItem())}
@@ -930,7 +961,7 @@ export const Modals = ({
                     <button 
                       type="button"
                       onClick={handleAddItem}
-                      className="p-3 bg-primary/10 text-primary rounded-xl hover:bg-primary/20 transition-all active:scale-95 shadow-inner"
+                      className="w-12 h-12 flex items-center justify-center bg-primary text-white rounded-xl hover:bg-primary/90 transition-all active:scale-95 shadow-lg shadow-primary/20"
                     >
                       <Plus size={24} />
                     </button>
@@ -1835,6 +1866,7 @@ export const Modals = ({
                     >
                       <option value="superadmin">Super Admin</option>
                       <option value="gestor">Gestor</option>
+                      <option value="transportes">Transportes</option>
                       <option value="compras">Compras</option>
                       <option value="visualizador">Visualizador</option>
                     </select>
@@ -1868,6 +1900,7 @@ export const Modals = ({
                     {[
                       { id: 'dashboard', label: 'Dashboard' },
                       { id: 'combustivel', label: 'Combustível' },
+                      { id: 'frota', label: 'Frota Municipal' },
                       { id: 'diarias', label: 'Diárias' },
                       { id: 'checklists', label: 'Checklists' },
                       { id: 'contratos', label: 'Contratos' },

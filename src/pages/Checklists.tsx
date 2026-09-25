@@ -492,7 +492,7 @@ const Checklists = ({
                 value: '',
                 invoiceValue: '',
                 invoiceNumber: '',
-                submissionDate: new Date().toISOString().split('T')[0],
+                submissionDate: format(new Date(), 'yyyy-MM-dd'),
                 status: 'em_analise',
                 items: DEFAULT_CHECKLIST_ITEMS.map(item => ({ ...item, id: crypto.randomUUID() }))
               });
@@ -541,7 +541,7 @@ const Checklists = ({
                     value: '',
                     invoiceValue: '',
                     invoiceNumber: '',
-                    submissionDate: new Date().toISOString().split('T')[0],
+                    submissionDate: format(new Date(), 'yyyy-MM-dd'),
                     status: 'em_analise',
                     items: DEFAULT_CHECKLIST_ITEMS.map(item => ({ ...item, id: crypto.randomUUID() }))
                    });

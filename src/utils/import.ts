@@ -1,3 +1,4 @@
+import { format } from 'date-fns';
 import React from 'react';
 import * as XLSX from 'xlsx';
 import * as pdfjsLib from 'pdfjs-dist';
@@ -239,7 +240,7 @@ export const handleImportFuel = async (
     console.log("Colunas: " + Object.keys(json[0] || {}).join(", "));
 
     const records: any[] = [];
-    const today = new Date().toISOString().split('T')[0];
+    const today = format(new Date(), 'yyyy-MM-dd');
     const prefId = currentUser?.prefeituraId || '1';
 
     for (let i = 0; i < json.length; i++) {

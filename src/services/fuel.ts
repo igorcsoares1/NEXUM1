@@ -1,3 +1,4 @@
+import { format } from 'date-fns';
 import { supabase } from '../lib/supabase';
 import { FuelRecord, User, Servidor } from '../types';
 
@@ -57,7 +58,7 @@ export const handleSaveFuel = async (
       prefeituraId: currentUser.prefeituraId || '1',
       vehicle: '',
       driver: '',
-      date: new Date().toISOString().split('T')[0],
+      date: format(new Date(), 'yyyy-MM-dd'),
       quantity: '',
       cost: '',
       status: 'concluido',

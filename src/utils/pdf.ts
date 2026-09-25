@@ -367,3 +367,28 @@ export const generateAuditLogsPDF = (records: any[], systemSettings: any) => {
   
   doc.save(`logs_atividades_${format(new Date(), 'yyyyMMdd')}.pdf`);
 };
+
+export const generateFleetReportPDF = (records: any[], systemSettings: any) => {
+  const doc = new jsPDF('l');
+  const startY = addHeader(doc, 'Relatório da Frota Municipal', systemSettings);
+  
+  const body = records.map(r => [
+    r.nome || '-',
+    r.placa || '-',
+    r.ano || '-',
+    r.secretaria || '-',
+    r.km_atual || '-',
+    r.tipo_propriedade?.toUpperCase() || 'OFICIAL',
+    r.status?.replace('_', ' ').toUpperCase() || '-'
+  ]);
+  
+  autoTable(doc, {
+    startY,
+    head: [['Veículo', 'Placa', 'Ano', 'Secretaria', 'KM Atual', 'Tipo', 'Status']],
+    body,
+    theme: 'striped',
+    headStyles: { fillColor: [2, 132, 199] },
+  });
+  
+  doc.save(`relatorio_frota_${format(new Date(), 'yyyyMMdd')}.pdf`);
+};

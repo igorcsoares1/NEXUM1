@@ -48,14 +48,14 @@ export default function NotasFiscais({ currentUser, addNotification }: NotasFisc
   // Estados para o filtro de período do relatório
   const [showPeriodSelector, setShowPeriodSelector] = useState(false);
   const [periodType, setPeriodType] = useState<PeriodType>('hoje');
-  const [customDateStart, setCustomDateStart] = useState(new Date().toISOString().split('T')[0]);
-  const [customDateEnd, setCustomDateEnd] = useState(new Date().toISOString().split('T')[0]);
+  const [customDateStart, setCustomDateStart] = useState(format(new Date(), 'yyyy-MM-dd'));
+  const [customDateEnd, setCustomDateEnd] = useState(format(new Date(), 'yyyy-MM-dd'));
 
   const [formData, setFormData] = useState<Partial<NotaFiscal>>({
     numero_nota: '',
     fornecedor: '',
     valor: '',
-    data_emissao: new Date().toISOString().split('T')[0],
+    data_emissao: format(new Date(), 'yyyy-MM-dd'),
     contrato_id: '',
     observacao: ''
   });
@@ -114,13 +114,32 @@ export default function NotasFiscais({ currentUser, addNotification }: NotasFisc
     if (dateString.match(/^\d{4}-\d{2}-\d{2}/)) {
       return dateString.substring(0, 10);
     }
-    // Se está em formato diferente, tenta converter
+    // Se está em formato diferente, tenta converter usando format para garantir local day
     try {
-      const date = new Date(dateString);
+      const date = parseISO(dateString);
       if (isNaN(date.getTime())) return '';
-      return date.toISOString().split('T')[0];
+      return format(date, 'yyyy-MM-dd');
     } catch {
       return '';
+    }
+  };
+
+  // Função para formatar data local sem shift de timezone
+  const formatLocalDate = (dateString: string, formatStr: string = 'dd/MM/yyyy'): string => {
+    if (!dateString) return '-';
+    try {
+      // Se for YYYY-MM-DD puro
+      if (dateString.match(/^\d{4}-\d{2}-\d{2}$/)) {
+        const [year, month, day] = dateString.split('-').map(Number);
+        const date = new Date(year, month - 1, day);
+        return format(date, formatStr);
+      }
+      // Se for ISO com tempo
+      const date = parseISO(dateString);
+      if (isNaN(date.getTime())) return '-';
+      return format(date, formatStr);
+    } catch {
+      return '-';
     }
   };
 
@@ -130,48 +149,45 @@ export default function NotasFiscais({ currentUser, addNotification }: NotasFisc
     let endDateStr: string;
 
     const today = new Date();
-    // Pega a data de hoje em formato YYYY-MM-DD
-    const todayStr = today.toISOString().split('T')[0];
+    // Pega a data de hoje em formato YYYY-MM-DD local
+    const todayStr = format(today, 'yyyy-MM-dd');
 
     switch (periodType) {
       case 'hoje':
-        // Filtro rigoroso: APENAS do dia de hoje
         startDateStr = todayStr;
         endDateStr = todayStr;
         break;
       case 'semana':
         const weekStart = startOfWeek(today, { weekStartsOn: 1 });
         const weekEnd = endOfWeek(today, { weekStartsOn: 1 });
-        startDateStr = weekStart.toISOString().split('T')[0];
-        endDateStr = weekEnd.toISOString().split('T')[0];
+        startDateStr = format(weekStart, 'yyyy-MM-dd');
+        endDateStr = format(weekEnd, 'yyyy-MM-dd');
         break;
       case 'mes':
         const monthStart = startOfMonth(today);
         const monthEnd = endOfMonth(today);
-        startDateStr = monthStart.toISOString().split('T')[0];
-        endDateStr = monthEnd.toISOString().split('T')[0];
+        startDateStr = format(monthStart, 'yyyy-MM-dd');
+        endDateStr = format(monthEnd, 'yyyy-MM-dd');
         break;
       case 'custom':
         startDateStr = customDateStart;
         endDateStr = customDateEnd;
         break;
       default:
-        return notas.filter(n => n.status === 'recebido');
+        return notas;
     }
 
     return notas.filter(nota => {
-      if (!nota.data_emissao) return false;
-      if (nota.status !== 'recebido') return false;
+      // Filtramos pela data de emissão ou pela data que foi enviado/recebido se necessário
+      // O usuário geralmente quer ver o que aconteceu no dia
+      const dateToCompare = nota.data_emissao || (nota.enviado_em ? nota.enviado_em.substring(0, 10) : '');
       
-      // Extrai a data em formato YYYY-MM-DD
-      const notaDateStr = extractDateOnly(nota.data_emissao);
+      if (!dateToCompare) return false;
       
+      const notaDateStr = extractDateOnly(dateToCompare);
       if (!notaDateStr) return false;
       
-      // Comparação rigorosa: >= startDate AND <= endDate
-      const isInRange = notaDateStr >= startDateStr && notaDateStr <= endDateStr;
-      
-      return isInRange;
+      return notaDateStr >= startDateStr && notaDateStr <= endDateStr;
     });
   };
 
@@ -188,7 +204,7 @@ export default function NotasFiscais({ currentUser, addNotification }: NotasFisc
       case 'mes':
         return `Mês de ${format(today, 'MMMM/yyyy', { locale: ptBR })}`;
       case 'custom':
-        return `${format(new Date(customDateStart), 'dd/MM/yyyy')} - ${format(new Date(customDateEnd), 'dd/MM/yyyy')}`;
+        return `${formatLocalDate(customDateStart)} - ${formatLocalDate(customDateEnd)}`;
       default:
         return 'Período não definido';
     }
@@ -223,7 +239,7 @@ export default function NotasFiscais({ currentUser, addNotification }: NotasFisc
       if (addNotification) addNotification("Sucesso", "Nota fiscal enviada!", "success");
       else alert('Nota salva com sucesso!');
 
-      setFormData({ numero_nota: '', fornecedor: '', valor: '', data_emissao: new Date().toISOString().split('T')[0], contrato_id: '', observacao: '' });
+      setFormData({ numero_nota: '', fornecedor: '', valor: '', data_emissao: format(new Date(), 'yyyy-MM-dd'), contrato_id: '', observacao: '' });
       setIsAvulso(false);
       await fetchNotas();
       setActiveTab(canReceive ? 'receber' : 'recebidas');
@@ -280,16 +296,6 @@ export default function NotasFiscais({ currentUser, addNotification }: NotasFisc
   const generateReport = () => {
     try {
       const filteredNotas = getFilteredNotasByPeriod();
-      
-      if (filteredNotas.length === 0) {
-        if (addNotification) {
-          addNotification("Atenção", `Nenhuma nota recebida no período: ${getPeriodLabel()}`, "warning");
-        } else {
-          alert(`Nenhuma nota recebida no período: ${getPeriodLabel()}`);
-        }
-        return;
-      }
-
       const doc = new jsPDF();
       const now = new Date();
       const formattedDate = format(now, "dd/MM/yyyy HH:mm", { locale: ptBR });
@@ -306,44 +312,58 @@ export default function NotasFiscais({ currentUser, addNotification }: NotasFisc
       doc.text(`Período: ${periodLabel}`, 14, 30);
       doc.text(`Responsável: ${currentUser?.name || 'Sistema'}`, 14, 35);
       doc.text(`Data de Geração: ${formattedDate}`, 14, 40);
+
+      // Verificar se tem dados
+      if (filteredNotas.length === 0) {
+        doc.setFontSize(12);
+        doc.setTextColor(150);
+        doc.text('⚠️ Nenhuma nota fiscal encontrada neste período.', 14, 60);
+        
+        const filename = `Relatorio_NotasFiscais_${format(now, 'yyyyMMdd_HHmm')}_VAZIO.pdf`;
+        doc.save(filename);
+        
+        if (addNotification) {
+          addNotification("Info", `Relatório gerado sem dados para o período: ${getPeriodLabel()}`, "info");
+        }
+        setShowPeriodSelector(false);
+        return;
+      }
+
+      // Tem dados - gera tabela
       doc.text(`Total de Registros: ${filteredNotas.length}`, 14, 45);
 
-      // Cálculo do total de valores
       const totalValue = filteredNotas.reduce((sum, nota) => sum + Number(nota.valor), 0);
-      doc.setTextColor(79, 70, 229); // Cor primária
+      doc.setTextColor(79, 70, 229);
       doc.text(`Valor Total: ${new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(totalValue)}`, 14, 50);
 
-      // Preparação dos Dados
       const tableData = filteredNotas.map(nota => [
         nota.numero_nota,
         nota.fornecedor,
         new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(Number(nota.valor)),
-        nota.data_emissao ? format(parseISO(nota.data_emissao), 'dd/MM/yyyy') : '-',
-        nota.enviado_por || '-',
+        formatLocalDate(nota.data_emissao),
+        nota.status === 'recebido' ? 'RECEBIDA' : 'PENDENTE',
         nota.recebido_por || '-',
-        nota.recebido_em ? format(parseISO(nota.recebido_em), 'dd/MM/yyyy') : '-'
+        formatLocalDate(nota.recebido_em)
       ]);
 
-      // Geração da Tabela
       autoTable(doc, {
         startY: 58,
-        head: [['Número', 'Fornecedor', 'Valor', 'Emissão', 'Enviado Por', 'Recebido Por', 'Recebimento']],
+        head: [['Número', 'Fornecedor', 'Valor', 'Emissão', 'Status', 'Recebido Por', 'Data Receb.']],
         body: tableData,
         theme: 'striped',
         headStyles: { fillColor: [79, 70, 229], textColor: [255, 255, 255], fontStyle: 'bold' },
         styles: { fontSize: 8, cellPadding: 3 },
         columnStyles: {
-          0: { cellWidth: 25 },
+          0: { cellWidth: 20 },
           1: { cellWidth: 'auto' },
-          2: { cellWidth: 30, halign: 'right' },
-          3: { cellWidth: 25 },
-          4: { cellWidth: 25 },
+          2: { cellWidth: 25, halign: 'right' },
+          3: { cellWidth: 20 },
+          4: { cellWidth: 20 },
           5: { cellWidth: 25 },
-          6: { cellWidth: 25 }
+          6: { cellWidth: 20 }
         }
       });
 
-      // Rodapé
       const pageCount = (doc as any).internal.getNumberOfPages();
       for (let i = 1; i <= pageCount; i++) {
         doc.setPage(i);
@@ -651,7 +671,7 @@ export default function NotasFiscais({ currentUser, addNotification }: NotasFisc
                         </div>
                         <div className="bg-background rounded-2xl p-3">
                           <p className="text-[10px] font-black text-text-secondary mb-1">DATA</p>
-                          <p className="text-sm font-black text-text-primary">{nota.data_emissao ? format(parseISO(nota.data_emissao), 'dd/MM/yyyy') : '-'}</p>
+                          <p className="text-sm font-black text-text-primary">{formatLocalDate(nota.data_emissao)}</p>
                         </div>
                       </div>
 
@@ -708,13 +728,13 @@ export default function NotasFiscais({ currentUser, addNotification }: NotasFisc
                         </div>
                         <div className="bg-background rounded-2xl p-3">
                           <p className="text-[10px] font-black text-text-secondary mb-1">DATA</p>
-                          <p className="text-sm font-black text-text-primary">{nota.data_emissao ? format(parseISO(nota.data_emissao), 'dd/MM/yyyy') : '-'}</p>
+                          <p className="text-sm font-black text-text-primary">{formatLocalDate(nota.data_emissao)}</p>
                         </div>
                       </div>
 
                       <div className="text-[10px] text-text-secondary font-bold space-y-1">
-                        <div className="flex items-center gap-1.5"><User size={12} /><span>Enviado: {nota.enviado_por}</span></div>
-                        <div className="flex items-center gap-1.5"><Check size={12} className="text-emerald-500" /><span>Recebido: {nota.recebido_por}</span></div>
+                        <div className="flex items-center gap-1.5"><User size={12} /><span>Enviado: {nota.enviado_por} ({nota.enviado_em ? format(parseISO(nota.enviado_em), "dd/MM HH:mm") : '-'})</span></div>
+                        <div className="flex items-center gap-1.5"><Check size={12} className="text-emerald-500" /><span>Recebido: {nota.recebido_por} ({nota.recebido_em ? format(parseISO(nota.recebido_em), "dd/MM HH:mm") : '-'})</span></div>
                       </div>
                     </div>
                   ))

@@ -1,6 +1,6 @@
 import React from 'react';
 
-export type View = 'dashboard' | 'combustivel' | 'diarias' | 'checklists' | 'contratos' | 'notas_fiscais' | 'usuarios' | 'relatorios' | 'prefeituras' | 'configuracoes' | 'protocolo-entrada' | 'protocolo-saida' | 'protocolo-processos' | 'protocolo-tramitacao' | 'protocolo-pendencias' | 'protocolo-arquivos' | 'manual' | 'relatorio_executivo';
+export type View = 'dashboard' | 'combustivel' | 'frota' | 'diarias' | 'checklists' | 'contratos' | 'notas_fiscais' | 'usuarios' | 'relatorios' | 'prefeituras' | 'configuracoes' | 'protocolo-entrada' | 'protocolo-saida' | 'protocolo-processos' | 'protocolo-tramitacao' | 'protocolo-pendencias' | 'protocolo-arquivos' | 'manual' | 'relatorio_executivo';
 
 export interface Protocol {
   id: string;
@@ -201,9 +201,38 @@ export interface User {
   username: string;
   password?: string;
   email?: string;
-  role: 'superadmin' | 'admin' | 'gestor' | 'visualizador' | 'compras';
+  role: 'superadmin' | 'admin' | 'gestor' | 'visualizador' | 'compras' | 'transportes';
   department: string;
   status: 'ativo' | 'inativo';
   lastLogin: string;
   permissions?: View[];
+}
+
+export interface Vehicle {
+  id: string;
+  prefeituraId: string;
+  nome: string;
+  placa: string;
+  ano: string;
+  secretaria: string;
+  km_atual: string;
+  status: 'em_dia' | 'parado' | 'manutencao' | 'em_uso';
+  tipo_propriedade: 'oficial' | 'locado';
+  contrato_id?: string;
+  observacao?: string;
+  createdAt?: string;
+}
+
+export interface VehicleOccurrence {
+  id: string;
+  frota_id: string;
+  prefeituraId: string;
+  tipo: 'quebra' | 'avaria' | 'manutencao_preventiva' | 'retorno';
+  descricao: string;
+  pecas?: string;
+  custo?: string;
+  km: string;
+  status_resultado: 'em_dia' | 'parado' | 'manutencao' | 'em_uso';
+  registrado_por: string;
+  createdAt: string;
 }

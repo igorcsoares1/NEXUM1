@@ -5,7 +5,8 @@ import {
   Calendar, 
   ClipboardCheck, 
   FileText,
-  Settings
+  Settings,
+  Truck
 } from 'lucide-react';
 import { View } from '../types';
 import { cn } from '../lib/utils';
@@ -19,10 +20,10 @@ export const BottomNav = ({ activeView, setActiveView }: BottomNavProps) => {
   const navItems = [
     { id: 'dashboard' as View, icon: LayoutDashboard, label: 'Início' },
     { id: 'combustivel' as View, icon: Fuel, label: 'Abast.' },
+    { id: 'frota' as View, icon: Truck, label: 'Frota' },
     { id: 'diarias' as View, icon: Calendar, label: 'Diárias' },
     { id: 'checklists' as View, icon: ClipboardCheck, label: 'Check' },
     { id: 'contratos' as View, icon: FileText, label: 'Cont.' },
-    { id: 'configuracoes' as View, icon: Settings, label: 'Ajuste' },
   ];
 
   return (

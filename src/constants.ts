@@ -247,12 +247,12 @@ export const initialUsers: User[] = [
 ];
 
 export const DEFAULT_CHECKLIST_DOCUMENTS = [
-  'CERTIDÇÃO NEGATIVA DE DEBITOS TRABALHISTAS',
-  'CERTIDÃO NEGATIVA DE REGULARIDADE (FGTS)',
-  'CERTIDAÇÃO NEGATIVA DE DEBITOS FEDERAIS',
-  'CERTIDAÇÃO NETAGIVA DE DEBITOS ESTADUAIS',
-  'CERTIDÃO NEGATIVA DE DEBITSO MUNICIPAIS',
-  'PLANILHA DE COMPOSIÇÃO DE CUSTOS',
-  'RELATORIO DE ATIVIDADES',
-  'CONTA BANCARIA DA EMPRESA'
+  'Certidão Negativa de Débitos Trabalhistas',
+  'Certidão de Regularidade do FGTS',
+  'Certidão Negativa de Débitos Federais',
+  'Certidão Negativa de Débitos Estaduais',
+  'Certidão Negativa de Débitos Municipais',
+  'Planilha de Composição de Custos',
+  'Relatório de Atividades',
+  'Conta Bancária da Empresa (Comprovante)'
 ];
