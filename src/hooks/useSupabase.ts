@@ -39,7 +39,7 @@ export function useSupabase({ isAuthReady, currentUser, isLoggedIn }: UseSupabas
   useEffect(() => {
     if (!isAuthReady || !isLoggedIn || !currentUser) return;
 
-    const prefeituraId = currentUser.prefeituraId;
+    const prefeituraId = currentUser.prefeituraId || '1';
 
     const fetchWithRetry = async (fetchFn: () => any, ctx: string, retries = 3, delay = 2000) => {
       try {
@@ -108,7 +108,7 @@ export function useSupabase({ isAuthReady, currentUser, isLoggedIn }: UseSupabas
     const fetchDaily = async () => {
       try {
         const data = await fetchWithRetry(() => 
-          supabase.from('dailyRecords').select('*').eq('prefeituraId', currentUser.prefeituraId),
+          supabase.from('dailyRecords').select('*').eq('prefeituraId', prefeituraId),
           "daily"
         );
         const normalized = (data || []).map((r: any) => {
@@ -131,7 +131,7 @@ export function useSupabase({ isAuthReady, currentUser, isLoggedIn }: UseSupabas
     const fetchServidores = async () => {
       try {
         const data = await fetchWithRetry(() => 
-          supabase.from('servidores').select('*').eq('prefeituraId', currentUser.prefeituraId),
+          supabase.from('servidores').select('*').eq('prefeituraId', prefeituraId),
           "servidores"
         );
         const normalized = (data || []).map((s: any) => {
@@ -347,17 +347,20 @@ export function useSupabase({ isAuthReady, currentUser, isLoggedIn }: UseSupabas
     setProtocols,
     fetchContracts: async () => {
       if (!currentUser) return;
-      const { data, error } = await supabase.from('contracts').select('*').eq('prefeituraId', currentUser.prefeituraId);
+      const prefId = currentUser.prefeituraId || '1';
+      const { data, error } = await supabase.from('contracts').select('*').eq('prefeituraId', prefId);
       if (!error) setContracts(data || []);
     },
     fetchFuelRecords: async () => {
       if (!currentUser) return;
-      const { data, error } = await supabase.from('fuelRecords').select('*').eq('prefeituraId', currentUser.prefeituraId);
+      const prefId = currentUser.prefeituraId || '1';
+      const { data, error } = await supabase.from('fuelRecords').select('*').eq('prefeituraId', prefId);
       if (!error) setFuelRecords(data || []);
     },
     fetchDailyRecords: async () => {
       if (!currentUser) return;
-      const { data, error } = await supabase.from('dailyRecords').select('*').eq('prefeituraId', currentUser.prefeituraId);
+      const prefId = currentUser.prefeituraId || '1';
+      const { data, error } = await supabase.from('dailyRecords').select('*').eq('prefeituraId', prefId);
       if (!error) {
         const normalized = (data || []).map((r: any) => {
           const entry = Object.entries(r);
@@ -375,7 +378,8 @@ export function useSupabase({ isAuthReady, currentUser, isLoggedIn }: UseSupabas
     },
     fetchServidores: async () => {
       if (!currentUser) return;
-      const { data, error } = await supabase.from('servidores').select('*').eq('prefeituraId', currentUser.prefeituraId);
+      const prefId = currentUser.prefeituraId || '1';
+      const { data, error } = await supabase.from('servidores').select('*').eq('prefeituraId', prefId);
       if (!error) {
         const normalized = (data || []).map((s: any) => {
           let position = s.position;
@@ -404,6 +408,12 @@ export function useSupabase({ isAuthReady, currentUser, isLoggedIn }: UseSupabas
       if (!currentUser) return;
       const { data, error } = await supabase.from('checklists').select('*').eq('prefeituraId', currentUser.prefeituraId);
       if (!error) setChecklistRecords(data || []);
+    },
+    fetchProtocols: async () => {
+      if (!currentUser) return;
+      const prefId = currentUser.prefeituraId || '1';
+      const { data, error } = await supabase.from('protocols').select('*').eq('prefeituraId', prefId);
+      if (!error) setProtocols(data || []);
     },
     fetchUsers: async () => {
       if (!currentUser) return;

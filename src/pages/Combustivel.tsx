@@ -16,7 +16,8 @@ import {
   Settings
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { format } from 'date-fns';
+import { format, parseISO } from 'date-fns';
+import { ptBR } from 'date-fns/locale';
 import { cn } from '../lib/utils';
 import { FuelRecord, User } from '../types';
 import { StatCard } from '../components/ui/StatCard';
@@ -92,13 +93,45 @@ const Combustivel = ({
   // FIX: Ref para o input de arquivo
   const fileInputRef = React.useRef<HTMLInputElement>(null);
   const [showVehicleSummary, setShowVehicleSummary] = React.useState(true);
+  const [expandedSummaryMonths, setExpandedSummaryMonths] = React.useState<string[]>([]);
   const months = ['janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho', 'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro'];
   
-  const totalLiters = filteredFuelRecords.reduce((acc, r) => acc + (parseFloat(r.quantity?.toString() || '0')), 0);
+  const toggleSummaryMonth = (month: string) => {
+    setExpandedSummaryMonths(prev => 
+      prev.includes(month) ? prev.filter(m => m !== month) : [...prev, month]
+    );
+  };
+  
+  const parseQuantity = (qty: any): number => {
+    if (qty === null || qty === undefined) return 0;
+    if (typeof qty === 'number') return isNaN(qty) ? 0 : qty;
+    const str = String(qty).replace(/[^\d.,-]/g, '').trim();
+    if (str.includes(',')) {
+      return parseFloat(str.replace(/\./g, '').replace(',', '.')) || 0;
+    }
+    return parseFloat(str) || 0;
+  };
+
+  const getRecordMonth = (record: FuelRecord): string => {
+    if (record.month && record.month.trim()) {
+      return record.month.trim().toLowerCase();
+    }
+    if (record.date) {
+      try {
+        const parsed = parseISO(record.date);
+        if (!isNaN(parsed.getTime())) {
+          return format(parsed, 'MMMM', { locale: ptBR }).toLowerCase();
+        }
+      } catch {}
+    }
+    return 'sem mês';
+  };
+
+  const totalLiters = filteredFuelRecords.reduce((acc, r) => acc + parseQuantity(r.quantity), 0);
   const totalCost = filteredFuelRecords.reduce((acc, r) => acc + parseCurrencyToNumber(r.cost), 0);
 
   const vehicleSummaryByMonth = filteredFuelRecords.reduce((acc, record) => {
-    const month = record.month?.toLowerCase() || 'sem mês';
+    const month = getRecordMonth(record);
     const vehicle = record.vehicle || 'Sem Veículo';
     
     if (!acc[month]) {
@@ -107,7 +140,7 @@ const Combustivel = ({
     if (!acc[month][vehicle]) {
       acc[month][vehicle] = { liters: 0, cost: 0 };
     }
-    acc[month][vehicle].liters += parseFloat(record.quantity?.toString() || '0');
+    acc[month][vehicle].liters += parseQuantity(record.quantity);
     acc[month][vehicle].cost += parseCurrencyToNumber(record.cost);
     return acc;
   }, {} as Record<string, Record<string, { liters: number; cost: number }>>);
@@ -164,16 +197,28 @@ const Combustivel = ({
               >
                 <Printer size={20} />
               </button>
-              <label className="p-2 rounded-full hover:bg-surface-hover text-text-secondary active:scale-95 transition-colors cursor-pointer">
-                <FileText size={20} />
-                <input
-                  type="file"
-                  accept=".xlsx,.xls,.csv"
-                  className="hidden"
-                  onChange={handleImportFuel}
-                  disabled={isImporting}
-                />
-              </label>
+              <button
+                onClick={() => setShowFuelFilters(!showFuelFilters)}
+                className={cn(
+                  "p-2 rounded-full active:scale-95 transition-colors",
+                  showFuelFilters ? "bg-primary text-white" : "hover:bg-surface-hover text-text-secondary"
+                )}
+                title="Filtros"
+              >
+                <Filter size={18} />
+              </button>
+              {canAdd && (
+                <label className="p-2 rounded-full hover:bg-surface-hover text-text-secondary active:scale-95 transition-colors cursor-pointer" title="Importar Planilha">
+                  <FileText size={18} />
+                  <input
+                    type="file"
+                    accept=".xlsx,.xls,.csv"
+                    className="hidden"
+                    onChange={handleImportFuel}
+                    disabled={isImporting}
+                  />
+                </label>
+              )}
             </div>
           </div>
 
@@ -188,6 +233,51 @@ const Combustivel = ({
               onChange={(e) => setFuelFilters({ ...fuelFilters, search: e.target.value })}
             />
           </div>
+
+          {/* Mobile Filter Expandable */}
+          <AnimatePresence>
+            {showFuelFilters && (
+              <motion.div
+                initial={{ height: 0, opacity: 0 }}
+                animate={{ height: 'auto', opacity: 1 }}
+                exit={{ height: 0, opacity: 0 }}
+                className="overflow-hidden mt-3 pt-3 border-t border-border/40"
+              >
+                <div className="flex flex-col gap-2.5">
+                  <div className="flex flex-col gap-1">
+                    <label className="text-[10px] font-bold text-text-secondary uppercase tracking-wider">Mês do Abastecimento</label>
+                    <select
+                      value={fuelFilters.month || ''}
+                      onChange={(e) => setFuelFilters({ ...fuelFilters, month: e.target.value })}
+                      className="bg-surface border border-border rounded-xl px-3 py-2 text-xs font-semibold outline-none focus:border-primary uppercase"
+                    >
+                      <option value="">Todos os meses</option>
+                      {months.map(m => (
+                        <option key={m} value={m}>{m.toUpperCase()}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="flex flex-col gap-1">
+                    <label className="text-[10px] font-bold text-text-secondary uppercase tracking-wider">Data Específica</label>
+                    <input
+                      type="date"
+                      className="bg-surface border border-border rounded-xl px-3 py-2 text-xs font-semibold outline-none focus:border-primary"
+                      value={fuelFilters.date}
+                      onChange={(e) => setFuelFilters({ ...fuelFilters, date: e.target.value })}
+                    />
+                  </div>
+                  {(fuelFilters.month || fuelFilters.date || fuelFilters.search) && (
+                    <button
+                      onClick={() => setFuelFilters({ search: '', date: '', month: '', minQuantity: '', maxQuantity: '', minCost: '', maxCost: '' })}
+                      className="text-[11px] font-black text-rose-500 hover:text-rose-600 text-right mt-1"
+                    >
+                      Limpar Filtros
+                    </button>
+                  )}
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
         </div>
 
         {/* Horizontal Metrics */}
@@ -361,34 +451,38 @@ const Combustivel = ({
               <Printer size={18} />
               <span>Imprimir</span>
             </button>
-            <label className="flex-1 sm:flex-none px-4 py-2.5 rounded-xl font-bold flex items-center justify-center cursor-pointer text-sm btn-surface">
-              <FileText size={18} />
-              {isImporting ? 'Processando...' : 'Importar Planilha'}
-              <input
-                type="file"
-                accept=".xlsx,.xls,.csv"
-                className="hidden"
-                onChange={handleImportFuel}
-                disabled={isImporting}
-              />
-            </label>
-            <button
-              onClick={() => {
-                setIsFuelSelectionMode(!isFuelSelectionMode);
-                if (isFuelSelectionMode) setSelectedFuelIds([]);
-              }}
-              className={cn(
-                "p-2.5 rounded-xl flex items-center gap-2 text-sm",
-                isFuelSelectionMode
-                  ? "btn-primary bg-primary/10 text-primary border border-primary/30"
-                  : "btn-surface"
-              )}
-              title={isFuelSelectionMode ? "Cancelar Seleção" : "Selecionar Múltiplos"}
-            >
-              <CheckSquare size={18} />
-              {isFuelSelectionMode && <span className="text-xs font-bold uppercase tracking-widest">Cancelar</span>}
-            </button>
-            {selectedFuelIds.length > 0 && (
+            {canAdd && (
+              <label className="flex-1 sm:flex-none px-4 py-2.5 rounded-xl font-bold flex items-center justify-center cursor-pointer text-sm btn-surface">
+                <FileText size={18} />
+                {isImporting ? 'Processando...' : 'Importar Planilha'}
+                <input
+                  type="file"
+                  accept=".xlsx,.xls,.csv"
+                  className="hidden"
+                  onChange={handleImportFuel}
+                  disabled={isImporting}
+                />
+              </label>
+            )}
+            {canEdit && (
+              <button
+                onClick={() => {
+                  setIsFuelSelectionMode(!isFuelSelectionMode);
+                  if (isFuelSelectionMode) setSelectedFuelIds([]);
+                }}
+                className={cn(
+                  "p-2.5 rounded-xl flex items-center gap-2 text-sm",
+                  isFuelSelectionMode
+                    ? "btn-primary bg-primary/10 text-primary border border-primary/30"
+                    : "btn-surface"
+                )}
+                title={isFuelSelectionMode ? "Cancelar Seleção" : "Selecionar Múltiplos"}
+              >
+                <CheckSquare size={18} />
+                {isFuelSelectionMode && <span className="text-xs font-bold uppercase tracking-widest">Cancelar</span>}
+              </button>
+            )}
+            {canDelete && selectedFuelIds.length > 0 && (
               <button
                 onClick={() => {
                   setDeleteType('fuelBulk');
@@ -468,40 +562,76 @@ const Combustivel = ({
                   <p className="text-center py-8 text-text-secondary font-medium">Nenhum dado para resumir.</p>
                 ) : (
                   Object.entries(vehicleSummaryByMonth).sort((a, b) => {
-                    const idxA = months.indexOf(a[0].toLowerCase());
-                    const idxB = months.indexOf(b[0].toLowerCase());
-                    return idxB - idxA; // Ordenar meses mais recentes primeiro
-                  }).map(([month, vehicles]) => (
-                    <div key={month} className="space-y-3">
-                      <div className="flex items-center gap-2">
-                        <span className="h-px flex-1 bg-border/50"></span>
-                        <span className="text-[10px] font-black uppercase tracking-[0.2em] text-primary bg-primary/5 px-3 py-1 rounded-full border border-primary/10">
-                          {month}
-                        </span>
-                        <span className="h-px flex-1 bg-border/50"></span>
+                    const getMonthIdx = (m: string) => {
+                      const idx = months.indexOf(m.toLowerCase());
+                      return idx === -1 ? -999 : idx;
+                    };
+                    return getMonthIdx(b[0]) - getMonthIdx(a[0]); // Ordenar meses mais recentes primeiro
+                  }).map(([month, vehicles]) => {
+                    const isExpanded = expandedSummaryMonths.includes(month);
+                    const monthTotalLiters = Object.values(vehicles).reduce((sum, v) => sum + v.liters, 0);
+                    const monthTotalCost = Object.values(vehicles).reduce((sum, v) => sum + v.cost, 0);
+
+                    return (
+                      <div key={month} className="border border-border/40 rounded-2xl overflow-hidden bg-surface/30">
+                        <button
+                          onClick={() => toggleSummaryMonth(month)}
+                          className="w-full flex items-center justify-between px-5 py-4 hover:bg-surface-hover/50 transition-all text-left"
+                        >
+                          <div className="flex items-center gap-3">
+                            <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center text-primary">
+                              <Calendar size={16} />
+                            </div>
+                            <div>
+                              <h4 className="text-sm font-black text-text-primary uppercase tracking-widest">{month}</h4>
+                              <div className="flex gap-3 mt-0.5">
+                                <span className="text-[10px] font-bold text-text-secondary uppercase">{Object.keys(vehicles).length} veículos</span>
+                                <span className="text-[10px] font-bold text-primary uppercase">{monthTotalLiters.toFixed(1)} L</span>
+                              </div>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-4">
+                            <span className="text-sm font-black text-emerald-500 hidden sm:block">
+                              R$ {monthTotalCost.toLocaleString('pt-BR', {minimumFractionDigits: 2})}
+                            </span>
+                            <Settings size={16} className={cn("text-text-secondary transition-transform duration-300", isExpanded && "rotate-180")} />
+                          </div>
+                        </button>
+
+                        <AnimatePresence>
+                          {isExpanded && (
+                            <motion.div
+                              initial={{ height: 0, opacity: 0 }}
+                              animate={{ height: 'auto', opacity: 1 }}
+                              exit={{ height: 0, opacity: 0 }}
+                              className="overflow-hidden border-t border-border/20"
+                            >
+                              <div className='p-4 overflow-x-auto bg-surface/10'>
+                                <table className='w-full text-sm'>
+                                  <thead>
+                                    <tr className='text-text-secondary text-[10px] uppercase tracking-widest border-b border-border/50'>
+                                      <th className='text-left py-3 font-bold'>Veículo</th>
+                                      <th className='text-right py-3 font-bold'>Litros</th>
+                                      <th className='text-right py-3 font-bold'>Valor Total</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody>
+                                    {Object.entries(vehicles).map(([vehicle, data]) => (
+                                      <tr key={vehicle} className='border-b border-border/20 hover:bg-surface-hover/30 transition-colors'>
+                                        <td className='py-3 font-medium text-text-primary'>{vehicle}</td>
+                                        <td className='text-right py-3 font-black text-text-secondary'>{data.liters.toFixed(1)} L</td>
+                                        <td className='text-right py-3 font-black text-emerald-500'>R$ {data.cost.toLocaleString('pt-BR', {minimumFractionDigits: 2})}</td>
+                                      </tr>
+                                    ))}
+                                  </tbody>
+                                </table>
+                              </div>
+                            </motion.div>
+                          )}
+                        </AnimatePresence>
                       </div>
-                      <div className='overflow-x-auto'>
-                        <table className='w-full text-sm'>
-                          <thead>
-                            <tr className='text-text-secondary text-[10px] uppercase tracking-widest border-b border-border/50'>
-                              <th className='text-left py-3 font-bold'>Veículo</th>
-                              <th className='text-right py-3 font-bold'>Litros</th>
-                              <th className='text-right py-3 font-bold'>Valor Total</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {Object.entries(vehicles).map(([vehicle, data]) => (
-                              <tr key={vehicle} className='border-b border-border/20 hover:bg-surface-hover/30 transition-colors'>
-                                <td className='py-3 font-medium text-text-primary'>{vehicle}</td>
-                                <td className='text-right py-3 font-black text-text-secondary'>{data.liters.toFixed(1)} L</td>
-                                <td className='text-right py-3 font-black text-emerald-500'>R$ {data.cost.toLocaleString('pt-BR', {minimumFractionDigits: 2})}</td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      </div>
-                    </div>
-                  ))
+                    );
+                  })
                 )}
               </motion.div>
             )}

@@ -60,6 +60,7 @@ interface ChecklistsProps {
     endDate: string;
   };
   setChecklistFilters: (filters: any) => void;
+  addNotification?: (title: string, message: string, type?: 'success' | 'error' | 'info' | 'warning') => void;
 }
 
 const Checklists = ({
@@ -95,7 +96,8 @@ const Checklists = ({
   setEditingChecklist,
   setNewChecklistData,
   confirmations,
-  currentUser
+  currentUser,
+  addNotification
 }: ChecklistsProps) => {
   const [showMobileMenu, setShowMobileMenu] = useState(false);
   const [showFilterModal, setShowFilterModal] = useState(false);
@@ -273,12 +275,14 @@ const Checklists = ({
                       >
                         <FileText size={16} className="text-primary" /> Relatório do Dia
                       </button>
-                      <button
-                        onClick={() => { setIsChecklistSelectionMode(true); setShowMobileMenu(false); }}
-                        className="flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-surface-hover text-sm font-bold text-text-primary transition-colors"
-                      >
-                        <CheckSquare size={16} className="text-primary" /> Selecionar
-                      </button>
+                      {canDelete && (
+                        <button
+                          onClick={() => { setIsChecklistSelectionMode(true); setShowMobileMenu(false); }}
+                          className="flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-surface-hover text-sm font-bold text-text-primary transition-colors"
+                        >
+                          <CheckSquare size={16} className="text-primary" /> Selecionar
+                        </button>
+                      )}
                     </div>
                   </>
                 )}
@@ -454,7 +458,11 @@ const Checklists = ({
                 </div>
               )
             ) : (
-              <RecibosDigitaisComponent currentUser={currentUser} onCountChange={setRecibosCount} />
+              <RecibosDigitaisComponent 
+                currentUser={currentUser} 
+                onCountChange={setRecibosCount} 
+                addNotification={addNotification}
+              />
             )}
           </div>
 
@@ -521,12 +529,14 @@ const Checklists = ({
             >
               <FileText size={18} /> Relatório do Dia
             </button>
-            <button
-              onClick={() => setIsChecklistSelectionMode(true)}
-              className="px-4 py-2.5 rounded-xl font-bold flex items-center gap-2 text-sm btn-surface"
-            >
-              <CheckSquare size={18} /> Selecionar
-            </button>
+            {canDelete && (
+              <button
+                onClick={() => setIsChecklistSelectionMode(true)}
+                className="px-4 py-2.5 rounded-xl font-bold flex items-center gap-2 text-sm btn-surface"
+              >
+                <CheckSquare size={18} /> Selecionar
+              </button>
+            )}
             {canAdd && (
               <button
                 onClick={() => {
@@ -788,7 +798,11 @@ const Checklists = ({
             </>
           ) : (
             <div className="p-4">
-              <RecibosDigitaisComponent currentUser={currentUser} onCountChange={setRecibosCount} />
+              <RecibosDigitaisComponent 
+                currentUser={currentUser} 
+                onCountChange={setRecibosCount} 
+                addNotification={addNotification}
+              />
             </div>
           )}
         </div>

@@ -67,7 +67,7 @@ export const AIAssistant: React.FC<AIAssistantProps> = ({
         { role: 'user', parts: [{ text: userMessage }] }
       ];
 
-      const aiContent = await callAIProxy(contents, {}, "gemini-1.5-flash");
+      const aiContent = await callAIProxy(contents, {}, "gemini-3.8-flash");
 
       setMessages(prev => [...prev, { role: 'ai', content: aiContent || "Desculpe, não consegui gerar uma resposta." }]);
     } catch (error: any) {

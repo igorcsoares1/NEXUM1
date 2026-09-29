@@ -66,9 +66,9 @@ const Relatorios = ({
           <header className="sticky top-0 z-30 bg-background/95 backdrop-blur-md border-b border-border/60 px-4 pt-6 pb-4 flex justify-between items-end print:hidden">
             <div>
               <h2 className="text-2xl font-black tracking-tighter">Relatórios</h2>
-              <p className="text-xs text-text-secondary font-bold uppercase tracking-widest mt-1">Auditoria & Analytics</p>
+              <p className="text-xs text-text-secondary font-bold uppercase tracking-widest mt-1">Auditoria & Análise</p>
             </div>
-            {currentUser?.role !== 'visualizador' && (
+            {currentUser && (
               <div className="flex gap-2">
                  <button onClick={handlePrint} className="w-10 h-10 flex items-center justify-center bg-surface border border-border rounded-xl text-text-primary active:scale-95 transition-all">
                   <Printer size={18} />
@@ -135,7 +135,7 @@ const Relatorios = ({
               <h1 className="text-4xl font-black tracking-tighter">Relatórios e Auditoria</h1>
               <p className="text-text-secondary font-medium text-lg">Gere documentos oficiais e analise indicadores municipais.</p>
             </div>
-            {currentUser?.role !== 'visualizador' && (
+            {currentUser && (
               <div className="flex gap-3">
                 <button onClick={handlePrint} className="px-6 py-3 rounded-2xl font-black uppercase tracking-widest text-xs flex items-center gap-2 btn-surface">
                   <Printer size={18} /> Imprimir Página

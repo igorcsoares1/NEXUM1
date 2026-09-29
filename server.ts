@@ -17,6 +17,27 @@ async function startServer() {
   app.use(express.json({ limit: '50mb' }));
   app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
+  // Classifica erros do Gemini: diário x por minuto x outros
+  const classifyAIError = (error: any) => {
+    const raw = error?.message || String(error || 'Erro desconhecido');
+    const low = raw.toLowerCase();
+    const isDaily = /perday|per day|per_day|requestsperday|daily/.test(low);
+    const is429 = raw.includes('429') || raw.includes('RESOURCE_EXHAUSTED') || low.includes('quota');
+    const isUnavailable = raw.includes('503') || raw.includes('UNAVAILABLE') || low.includes('high demand') || low.includes('overloaded');
+    const isKey = low.includes('api key') || low.includes('api_key') || raw.includes('PERMISSION_DENIED') || raw.includes('401') || raw.includes('403');
+    const isModel = raw.includes('404') || low.includes('not found') || low.includes('is not supported');
+    const isTooLarge = low.includes('too large') || low.includes('exceeds the maximum') || low.includes('token count') || raw.includes('413');
+    let status = 500;
+    let message = `Erro da IA: ${raw.substring(0, 300)}`;
+    if (isKey) { status = 401; message = 'Chave da API Gemini inválida ou sem permissão. Verifique a GEMINI_API_KEY nos Secrets do AI Studio.'; }
+    else if (isModel) { status = 404; message = 'Modelo de IA não encontrado ou não disponível para esta chave.'; }
+    else if (isTooLarge) { status = 413; message = 'O arquivo é grande demais para a IA. Envie apenas as páginas/abas principais do mês.'; }
+    else if (is429 && isDaily) { status = 429; message = 'O limite DIÁRIO de uso da IA foi atingido. Ele é renovado automaticamente no dia seguinte (horário do Pacífico). Para evitar isso, ative o faturamento na chave da API.'; }
+    else if (is429) { status = 429; message = 'Muitas requisições à IA em pouco tempo (limite por minuto). Aguarde 1 a 2 minutos e tente novamente.'; }
+    else if (isUnavailable) { status = 503; message = 'O serviço de IA está sobrecarregado no momento. Tente novamente em instantes.'; }
+    return { status, message, raw };
+  };
+
   // Helper for exponential backoff retries
   const withRetry = async <T>(fn: () => Promise<T>, retries = 10, delay = 3000): Promise<T> => {
     try {
@@ -24,9 +45,18 @@ async function startServer() {
     } catch (error: any) {
       const errorMsg = error?.message || String(error);
       
-      // If it's a daily quota exhaustion, don't retry as it won't resolve for hours
-      const isQuotaExceeded = errorMsg.includes('Quota exceeded') || errorMsg.includes('quota');
-      if (isQuotaExceeded) {
+      // Limite diário: não adianta tentar de novo
+      if (/perday|per day|per_day|daily/i.test(errorMsg)) {
+        throw error;
+      }
+      // Limite por minuto: tenta no máximo 2 vezes, esperando ~30s (cada tentativa gasta cota)
+      const isRate = errorMsg.includes('429') || errorMsg.includes('RESOURCE_EXHAUSTED') || /quota/i.test(errorMsg);
+      if (isRate) {
+        if (retries > 8) {
+          console.warn(`Gemini rate limit. Aguardando 30s... (${errorMsg.substring(0, 200)})`);
+          await new Promise(resolve => setTimeout(resolve, 30000));
+          return withRetry(fn, retries - 1, delay);
+        }
         throw error;
       }
 
@@ -65,7 +95,7 @@ async function startServer() {
       });
       
       const result = await withRetry(() => ai.models.generateContent({
-        model: "gemini-1.5-flash",
+        model: "gemini-3.8-flash",
         contents: [{ role: 'user', parts: [{ text: prompt }] }]
       }));
       
@@ -74,14 +104,8 @@ async function startServer() {
       res.json({ text });
     } catch (error: any) {
       console.error(`[${requestId}] AI Error:`, error);
-      const errorMsg = error?.message || String(error || "");
-      const isQuotaExceeded = errorMsg.includes('Quota exceeded') || errorMsg.includes('quota');
-      
-      const message = isQuotaExceeded 
-        ? "O limite diário de uso da IA foi atingido. Tente novamente mais tarde."
-        : "O serviço de IA está temporariamente sobrecarregado. Por favor, aguarde alguns instantes e tente novamente.";
-        
-      res.status(isQuotaExceeded ? 429 : 503).json({ error: message });
+      const { status, message, raw } = classifyAIError(error);
+      res.status(status).json({ error: message, detail: raw.substring(0, 1000) });
     }
   });
 
@@ -102,14 +126,24 @@ async function startServer() {
         httpOptions: { headers: { 'User-Agent': 'aistudio-build' } }
       });
 
-      // Use gemini-1.5-flash for stability and capability
-      const targetModel = "gemini-1.5-flash";
+      // Map deprecated models to modern supported model
+      let targetModel = model || "gemini-3.8-flash";
+      if (!targetModel || targetModel.includes("gemini-1.5") || targetModel.includes("gemini-2.0") || targetModel.includes("gemini-pro")) {
+        targetModel = "gemini-3.8-flash";
+      }
 
-      const result = await withRetry(() => ai.models.generateContent({
-        model: targetModel,
-        contents,
-        config
-      }));
+      // Modelo reserva: usado automaticamente quando a cota DIÁRIA do modelo principal acaba
+      const FALLBACK_MODEL = process.env.GEMINI_FALLBACK_MODEL || "gemini-3.5-flash-lite";
+      let result;
+      try {
+        result = await withRetry(() => ai.models.generateContent({ model: targetModel, contents, config }));
+      } catch (primaryError: any) {
+        const msg = primaryError?.message || String(primaryError);
+        const isDaily = /perday|per day|per_day|daily/i.test(msg);
+        if (!isDaily || targetModel === FALLBACK_MODEL) throw primaryError;
+        console.warn(`[${requestId}] Cota diária de ${targetModel} esgotada. Usando modelo reserva ${FALLBACK_MODEL}.`);
+        result = await withRetry(() => ai.models.generateContent({ model: FALLBACK_MODEL, contents, config }));
+      }
 
       let text = result.text || "";
       
@@ -125,25 +159,8 @@ async function startServer() {
       res.json({ text });
     } catch (error: any) {
       console.error(`[${requestId}] AI Process Error:`, error);
-      const errorMsg = error?.message || String(error || "Erro desconhecido");
-      const isUnavailable = errorMsg.includes('503') || errorMsg.includes('UNAVAILABLE') || errorMsg.includes('high demand');
-      const isRateLimit = errorMsg.includes('429') || errorMsg.includes('RESOURCE_EXHAUSTED');
-      const isQuotaExceeded = errorMsg.includes('Quota exceeded') || errorMsg.includes('quota');
-      
-      const status = isUnavailable ? 503 : (isRateLimit ? 429 : 500);
-      let userMessage = errorMsg;
-      
-      if (isQuotaExceeded) {
-        userMessage = "O limite diário de uso da IA foi atingido para este projeto. A funcionalidade será restabelecida automaticamente em algumas horas.";
-      } else if (isRateLimit) {
-        userMessage = "Limite de requisições de IA atingido. Por favor, aguarde alguns minutos antes de tentar novamente.";
-      } else if (isUnavailable) {
-        userMessage = "O serviço de IA está temporariamente sobrecarregado. Tente novamente em instantes.";
-      }
-
-      res.status(status).json({ 
-        error: userMessage
-      });
+      const { status, message, raw } = classifyAIError(error);
+      res.status(status).json({ error: message, detail: raw.substring(0, 1000) });
     }
   });
 

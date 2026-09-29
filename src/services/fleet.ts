@@ -92,6 +92,9 @@ export const fleetService = {
       if (occurrence.km) {
         vehicleUpdates.km_atual = occurrence.km;
       }
+      if (occurrence.proximo_km) {
+        vehicleUpdates.km_proxima_revisao = occurrence.proximo_km;
+      }
       await this.updateVehicle(occurrence.frota_id, vehicleUpdates);
     }
 

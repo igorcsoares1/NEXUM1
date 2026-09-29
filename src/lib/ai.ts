@@ -2,7 +2,7 @@
  * Client-side utility for calling the server-side AI proxy.
  * This avoids direct SDK usage in the browser, preventing CORS and CSP errors.
  */
-export const callAIProxy = async (contents: any[], config: any = {}, model: string = "gemini-1.5-flash", retries = 2): Promise<string> => {
+export const callAIProxy = async (contents: any[], config: any = {}, model: string = "gemini-3.8-flash", retries = 2): Promise<string> => {
   try {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 600000); // 10 minute timeout for server retries
@@ -22,19 +22,9 @@ export const callAIProxy = async (contents: any[], config: any = {}, model: stri
     if (!response.ok) {
       if (isJson) {
         const data = await response.json();
-        const errorMessage = data.error || "";
-        
-        // Comprehensive Quota error handling (429 or specific strings)
-        const isQuotaError = 
-          response.status === 429 || 
-          errorMessage.toLowerCase().includes("quota") || 
-          errorMessage.toLowerCase().includes("limit") || 
-          errorMessage.toLowerCase().includes("resource_exhausted");
-
-        if (isQuotaError) {
-          throw new Error("O limite diário de uso da IA foi atingido para este projeto. A funcionalidade será restabelecida automaticamente em algumas horas.");
-        }
-        throw new Error(errorMessage || `Erro de IA (${response.status})`);
+        // Mostra a mensagem real classificada pelo servidor (não assume mais "limite diário")
+        if (data.detail) console.warn('Detalhe do erro da IA:', data.detail);
+        throw new Error(data.error || `Erro de IA (${response.status})`);
       } else {
         const text = await response.text();
         if (text.includes("<!doctype") || text.includes("<html") || text.includes("Service Unavailable")) {
@@ -57,7 +47,7 @@ export const callAIProxy = async (contents: any[], config: any = {}, model: stri
   } catch (error: any) {
     // Only log true unexpected errors, not user-friendly quota/timeout messages
     const isFriendlyError = 
-      error.message?.includes("limite diário") || 
+      error.message?.includes("limite") || 
       error.message?.includes("temporariamente ocupado") ||
       error.name === 'AbortError';
 

@@ -51,15 +51,21 @@ export const FrotaMunicipal = ({ currentUser, addNotification, systemSettings }:
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
+  const [propertyFilter, setPropertyFilter] = useState<string>('all');
+  const [secretariaFilter, setSecretariaFilter] = useState<string>('all');
+  const [maintenanceFilter, setMaintenanceFilter] = useState<boolean>(false);
   const [viewMode, setViewMode] = useState<'grid' | 'table'>('table');
   const [activeTab, setActiveTab] = useState<'frota' | 'dashboard'>('frota');
 
   const [showNewVehicleModal, setShowNewVehicleModal] = useState(false);
+  const [showEditVehicleModal, setShowEditVehicleModal] = useState(false);
   const [showOccurrenceModal, setShowOccurrenceModal] = useState(false);
   const [selectedVehicle, setSelectedVehicle] = useState<Vehicle | null>(null);
   const [occurrences, setOccurrences] = useState<VehicleOccurrence[]>([]);
   const [loadingOccurrences, setLoadingOccurrences] = useState(false);
   const [isHistoryViewOnly, setIsHistoryViewOnly] = useState(false);
+  const [isUpdating, setIsUpdating] = useState(false);
+  const [vehicleToDelete, setVehicleToDelete] = useState<string | null>(null);
 
   // New Vehicle Form
   const [newVehicleData, setNewVehicleData] = useState<Partial<Vehicle>>({
@@ -72,6 +78,8 @@ export const FrotaMunicipal = ({ currentUser, addNotification, systemSettings }:
     chassi: '',
     secretaria: '',
     km_atual: '',
+    km_proxima_revisao: '',
+    tipo_veiculo: 'Carro',
     status: 'em_dia',
     tipo_propriedade: 'oficial',
     contrato_id: '',
@@ -79,18 +87,20 @@ export const FrotaMunicipal = ({ currentUser, addNotification, systemSettings }:
   });
 
   // New Occurrence Form
-  const [newOccurrenceData, setNewOccurrenceData] = useState<Partial<VehicleOccurrence>>({
+    const [newOccurrenceData, setNewOccurrenceData] = useState<Partial<VehicleOccurrence>>({
     tipo: 'manutencao_preventiva',
     descricao: '',
     pecas: '',
     custo: '',
     km: '',
-    status_resultado: 'em_dia'
+    proximo_km: '',
+    status_resultado: 'em_dia',
+    createdAt: new Date().toISOString().substring(0, 16)
   });
 
   const rolesWithWriteAccess = ['superadmin', 'admin', 'gestor', 'transportes'];
   const canWrite = currentUser && rolesWithWriteAccess.includes(currentUser.role);
-  const canGenerateReport = currentUser && ['superadmin', 'admin', 'gestor'].includes(currentUser.role);
+  const canGenerateReport = currentUser && ['superadmin', 'admin', 'gestor', 'visualizador', 'transportes'].includes(currentUser.role);
 
   useEffect(() => {
     fetchVehicles();
@@ -125,13 +135,38 @@ export const FrotaMunicipal = ({ currentUser, addNotification, systemSettings }:
     e.preventDefault();
     if (!currentUser?.prefeituraId) return;
 
+    // Check for duplicate plate
+    const cleanPlate = newVehicleData.placa?.trim().toUpperCase();
+    if (cleanPlate) {
+      const isDuplicate = vehicles.some(v => 
+        v.placa.trim().toUpperCase() === cleanPlate && 
+        (!showEditVehicleModal || (selectedVehicle && v.id !== selectedVehicle.id))
+      );
+      
+      if (isDuplicate) {
+        addNotification("Erro", `Já existe um veículo cadastrado com a placa ${cleanPlate}.`, "error");
+        return;
+      }
+    }
+
     try {
-      await fleetService.addVehicle({
-        ...newVehicleData,
-        prefeituraId: currentUser.prefeituraId
-      });
-      addNotification("Sucesso", "Veículo cadastrado!", "success");
-      setShowNewVehicleModal(false);
+      if (showEditVehicleModal && selectedVehicle) {
+        await fleetService.updateVehicle(selectedVehicle.id, {
+          ...newVehicleData,
+          placa: newVehicleData.placa?.trim().toUpperCase()
+        });
+        addNotification("Sucesso", "Veículo atualizado!", "success");
+        setShowEditVehicleModal(false);
+      } else {
+        await fleetService.addVehicle({
+          ...newVehicleData,
+          placa: newVehicleData.placa?.trim().toUpperCase(),
+          prefeituraId: currentUser.prefeituraId
+        });
+        addNotification("Sucesso", "Veículo cadastrado!", "success");
+        setShowNewVehicleModal(false);
+      }
+      
       setNewVehicleData({
         nome: '',
         placa: '',
@@ -149,8 +184,30 @@ export const FrotaMunicipal = ({ currentUser, addNotification, systemSettings }:
       });
       fetchVehicles();
     } catch (error) {
-      addNotification("Erro", "Falha ao cadastrar veículo.", "error");
+      addNotification("Erro", "Falha ao processar veículo.", "error");
     }
+  };
+
+  const handleEditVehicle = (vehicle: Vehicle) => {
+    setSelectedVehicle(vehicle);
+    setNewVehicleData({
+      nome: vehicle.nome,
+      placa: vehicle.placa,
+      ano: vehicle.ano,
+      cor: vehicle.cor,
+      tipo_veiculo: vehicle.tipo_veiculo || 'Carro',
+      combustivel: vehicle.combustivel,
+      renavam: vehicle.renavam,
+      chassi: vehicle.chassi,
+      secretaria: vehicle.secretaria,
+      km_atual: vehicle.km_atual,
+      km_proxima_revisao: vehicle.km_proxima_revisao || '',
+      status: vehicle.status,
+      tipo_propriedade: vehicle.tipo_propriedade,
+      contrato_id: vehicle.contrato_id,
+      observacao: vehicle.observacao
+    });
+    setShowEditVehicleModal(true);
   };
 
   const handleSaveOccurrence = async (e: React.FormEvent) => {
@@ -163,7 +220,7 @@ export const FrotaMunicipal = ({ currentUser, addNotification, systemSettings }:
         frota_id: selectedVehicle.id,
         prefeituraId: currentUser.prefeituraId,
         registrado_por: currentUser.name,
-        createdAt: new Date().toISOString()
+        createdAt: new Date(newOccurrenceData.createdAt || '').toISOString()
       });
       addNotification("Sucesso", "Ocorrência registrada!", "success");
       setShowOccurrenceModal(false);
@@ -173,7 +230,8 @@ export const FrotaMunicipal = ({ currentUser, addNotification, systemSettings }:
         pecas: '',
         custo: '',
         km: '',
-        status_resultado: 'em_dia'
+        status_resultado: 'em_dia',
+        createdAt: new Date().toISOString().substring(0, 16)
       });
       fetchVehicles();
     } catch (error) {
@@ -182,11 +240,11 @@ export const FrotaMunicipal = ({ currentUser, addNotification, systemSettings }:
   };
 
   const handleDeleteVehicle = async (id: string) => {
-    if (!confirm("Deseja realmente excluir este veículo?")) return;
     try {
       await fleetService.deleteVehicle(id);
       addNotification("Sucesso", "Veículo removido.", "success");
       fetchVehicles();
+      setVehicleToDelete(null);
     } catch (error) {
       addNotification("Erro", "Falha ao remover veículo.", "error");
     }
@@ -194,13 +252,35 @@ export const FrotaMunicipal = ({ currentUser, addNotification, systemSettings }:
 
   const filteredVehicles = useMemo(() => {
     return vehicles.filter(v => {
-      const matchesSearch = v.nome.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                           v.placa.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                           v.secretaria.toLowerCase().includes(searchQuery.toLowerCase());
+      const q = searchQuery.toLowerCase();
+      const matchesSearch = v.nome.toLowerCase().includes(q) ||
+                           v.placa.toLowerCase().includes(q) ||
+                           v.secretaria.toLowerCase().includes(q) ||
+                           (v.renavam && v.renavam.includes(q)) ||
+                           (v.chassi && v.chassi.toLowerCase().includes(q));
       const matchesStatus = statusFilter === 'all' || v.status === statusFilter;
-      return matchesSearch && matchesStatus;
+      const matchesProperty = propertyFilter === 'all' || v.tipo_propriedade === propertyFilter;
+      const matchesSecretaria = secretariaFilter === 'all' || v.secretaria === secretariaFilter;
+      
+      let matchesMaintenance = true;
+      if (maintenanceFilter) {
+        if (!v.km_proxima_revisao || !v.km_atual) {
+          matchesMaintenance = false;
+        } else {
+          const km = parseInt(v.km_atual.replace(/\D/g, '')) || 0;
+          const nextKm = parseInt(v.km_proxima_revisao.replace(/\D/g, '')) || 0;
+          matchesMaintenance = km >= nextKm - 500;
+        }
+      }
+
+      return matchesSearch && matchesStatus && matchesProperty && matchesSecretaria && matchesMaintenance;
     });
-  }, [vehicles, searchQuery, statusFilter]);
+  }, [vehicles, searchQuery, statusFilter, propertyFilter, secretariaFilter, maintenanceFilter]);
+
+  const secretarias = useMemo(() => {
+    const sets = new Set(vehicles.map(v => v.secretaria).filter(Boolean));
+    return Array.from(sets).sort();
+  }, [vehicles]);
 
   const stats = useMemo(() => {
     return {
@@ -260,6 +340,31 @@ export const FrotaMunicipal = ({ currentUser, addNotification, systemSettings }:
     { name: 'Em Uso', value: stats.em_uso, color: '#3b82f6' },
   ].filter(d => d.value > 0);
 
+  const propertyChartData = [
+    { name: 'Oficial', value: vehicles.filter(v => v.tipo_propriedade === 'oficial').length, color: '#3b82f6' },
+    { name: 'Locado', value: vehicles.filter(v => v.tipo_propriedade === 'locado').length, color: '#a855f7' },
+  ].filter(d => d.value > 0);
+
+  const secretariaChartData = useMemo(() => {
+    const data: Record<string, number> = {};
+    vehicles.forEach(v => {
+      data[v.secretaria] = (data[v.secretaria] || 0) + 1;
+    });
+    return Object.entries(data)
+      .map(([name, value]) => ({ name, value }))
+      .sort((a, b) => b.value - a.value)
+      .slice(0, 10);
+  }, [vehicles]);
+
+  const maintenanceAlerts = useMemo(() => {
+    return vehicles.filter(v => {
+      if (!v.km_proxima_revisao || !v.km_atual) return false;
+      const km = parseInt(v.km_atual.replace(/\D/g, '')) || 0;
+      const nextKm = parseInt(v.km_proxima_revisao.replace(/\D/g, '')) || 0;
+      return km >= nextKm - 500; // Alert within 500km
+    });
+  }, [vehicles]);
+
   return (
     <div className="flex flex-col h-full bg-background overflow-hidden">
       {/* Header */}
@@ -276,6 +381,16 @@ export const FrotaMunicipal = ({ currentUser, addNotification, systemSettings }:
           </div>
 
           <div className="flex flex-wrap items-center gap-3">
+            <button
+              onClick={() => {
+                addNotification("Ajuda", "Aqui você controla todos os veículos da prefeitura. Use 'Novo Veículo' para cadastrar e 'Registrar Ocorrência' para atualizar o status ou registrar manutenções.", "info");
+              }}
+              className="p-2.5 bg-surface border border-border/40 rounded-xl text-text-secondary hover:text-primary transition-colors"
+              title="Ajuda sobre esta tela"
+            >
+              <AlertCircle size={20} />
+            </button>
+
             <div className="bg-surface p-1 rounded-xl border border-border/40 flex">
               <button
                 onClick={() => setActiveTab('frota')}
@@ -332,7 +447,7 @@ export const FrotaMunicipal = ({ currentUser, addNotification, systemSettings }:
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
               {[
                 { label: 'Total da Frota', value: stats.total, icon: Truck, color: 'text-primary', bg: 'bg-primary/10' },
-                { label: 'Operacionais', value: stats.em_dia + stats.em_uso, icon: CheckCircle2, color: 'text-emerald-500', bg: 'bg-emerald-500/10' },
+                { label: 'Secretarias', value: secretarias.length, icon: BarChart3, color: 'text-purple-500', bg: 'bg-purple-500/10' },
                 { label: 'Em Manutenção', value: stats.manutencao, icon: Wrench, color: 'text-amber-500', bg: 'bg-amber-500/10' },
                 { label: 'Fora de Serviço', value: stats.parado, icon: Ban, color: 'text-rose-500', bg: 'bg-rose-500/10' },
               ].map((stat, i) => (
@@ -351,11 +466,11 @@ export const FrotaMunicipal = ({ currentUser, addNotification, systemSettings }:
             </div>
 
             {/* Charts Row */}
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
               <div className="bg-surface border border-border/40 p-8 rounded-[2rem] shadow-sm">
                 <h3 className="text-lg font-black text-text-primary mb-8 flex items-center gap-3">
                   <LayoutGrid size={20} className="text-primary" />
-                  Distribuição por Status
+                  Status da Frota
                 </h3>
                 <div className="h-[300px] w-full">
                   <ResponsiveContainer width="100%" height="100%">
@@ -379,7 +494,7 @@ export const FrotaMunicipal = ({ currentUser, addNotification, systemSettings }:
                     </PieChart>
                   </ResponsiveContainer>
                 </div>
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mt-8">
+                <div className="grid grid-cols-2 gap-4 mt-8">
                   {statusChartData.map((item, i) => (
                     <div key={i} className="flex flex-col items-center gap-1">
                       <div className="w-3 h-3 rounded-full" style={{ backgroundColor: item.color }} />
@@ -390,29 +505,89 @@ export const FrotaMunicipal = ({ currentUser, addNotification, systemSettings }:
                 </div>
               </div>
 
-              <div className="bg-surface border border-border/40 p-8 rounded-[2rem] shadow-sm flex flex-col justify-center text-center space-y-4">
-                <div className="w-20 h-20 bg-primary/5 rounded-full flex items-center justify-center text-primary mx-auto">
-                  <Zap size={32} />
+              <div className="bg-surface border border-border/40 p-8 rounded-[2rem] shadow-sm">
+                <h3 className="text-lg font-black text-text-primary mb-8 flex items-center gap-3">
+                  <BarChart3 size={20} className="text-primary" />
+                  Frota por Secretaria
+                </h3>
+                <div className="h-[300px] w-full">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={secretariaChartData} layout="vertical">
+                      <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#e2e8f0" />
+                      <XAxis type="number" hide />
+                      <YAxis 
+                        dataKey="name" 
+                        type="category" 
+                        width={100} 
+                        tick={{ fontSize: 10, fontWeight: 700 }}
+                      />
+                      <Tooltip
+                        cursor={{ fill: 'transparent' }}
+                        contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }}
+                      />
+                      <Bar dataKey="value" fill="#3b82f6" radius={[0, 4, 4, 0]} barSize={20} />
+                    </BarChart>
+                  </ResponsiveContainer>
                 </div>
-                <h3 className="text-xl font-black text-text-primary">Monitoramento em Tempo Real</h3>
-                <p className="text-text-secondary text-sm max-w-sm mx-auto">
-                  O módulo de frota está integrado aos lançamentos de combustível e ocorrências para gerar relatórios precisos de consumo e performance.
-                </p>
-                <div className="pt-4 flex justify-center gap-4">
-                  <div className="bg-surface-hover px-4 py-2 rounded-xl border border-border/40">
-                    <p className="text-[10px] font-black text-text-secondary uppercase mb-1">Média de Idade</p>
-                    <p className="text-xl font-black text-text-primary">4.2 anos</p>
-                  </div>
-                  <div className="bg-surface-hover px-4 py-2 rounded-xl border border-border/40">
-                    <p className="text-[10px] font-black text-text-secondary uppercase mb-1">Disponibilidade</p>
-                    <p className="text-xl font-black text-emerald-500">92%</p>
-                  </div>
+              </div>
+
+              <div className="bg-surface border border-border/40 p-8 rounded-[2rem] shadow-sm flex flex-col">
+                <h3 className="text-lg font-black text-text-primary mb-8 flex items-center gap-3">
+                  <AlertCircle size={20} className="text-amber-500" />
+                  Alertas de Manutenção
+                </h3>
+                <div className="flex-1 overflow-y-auto space-y-4 pr-2 custom-scrollbar">
+                  {maintenanceAlerts.length === 0 ? (
+                    <div className="flex flex-col items-center justify-center py-10 text-center opacity-40">
+                      <CheckCircle2 size={40} className="text-emerald-500 mb-2" />
+                      <p className="text-xs font-bold uppercase tracking-widest">Toda frota em dia</p>
+                    </div>
+                  ) : (
+                    maintenanceAlerts.map(v => (
+                      <div key={v.id} className="p-4 bg-amber-500/5 border border-amber-500/10 rounded-2xl flex items-center justify-between group hover:bg-amber-500/10 transition-colors">
+                        <div>
+                          <p className="text-[10px] font-black uppercase text-text-primary leading-tight">{v.nome}</p>
+                          <p className="text-[9px] font-bold text-amber-600 tracking-tighter mt-0.5">{v.placa}</p>
+                        </div>
+                        <div className="text-right">
+                          <p className="text-[9px] font-black text-text-secondary uppercase">KM Atual</p>
+                          <p className="text-xs font-black text-amber-700 tracking-tighter">{v.km_atual} / {v.km_proxima_revisao}</p>
+                        </div>
+                      </div>
+                    ))
+                  )}
                 </div>
+                {maintenanceAlerts.length > 0 && (
+                  <p className="mt-6 text-[10px] font-bold text-amber-600 text-center uppercase tracking-widest">
+                    {maintenanceAlerts.length} veículo(s) próximo da revisão
+                  </p>
+                )}
               </div>
             </div>
           </motion.div>
         ) : (
           <div className="space-y-6">
+            {/* Legend Section */}
+            <div className="bg-surface border border-border/40 p-4 rounded-2xl shadow-sm flex flex-wrap gap-4 items-center">
+              <span className="text-[10px] font-black text-text-secondary uppercase tracking-widest mr-2">Legenda:</span>
+              <div className="flex items-center gap-2">
+                <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
+                <span className="text-[10px] font-bold text-text-secondary uppercase">Em Dia / Pronto</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="w-2 h-2 rounded-full bg-blue-500"></span>
+                <span className="text-[10px] font-bold text-text-secondary uppercase">Em Uso / Viagem</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="w-2 h-2 rounded-full bg-amber-500"></span>
+                <span className="text-[10px] font-bold text-text-secondary uppercase">Manutenção</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="w-2 h-2 rounded-full bg-rose-500"></span>
+                <span className="text-[10px] font-bold text-text-secondary uppercase">Parado / Oficina</span>
+              </div>
+            </div>
+
             {/* Search and Filter */}
             <div className="flex flex-col md:flex-row gap-4">
               <div className="relative flex-1 group">
@@ -441,6 +616,51 @@ export const FrotaMunicipal = ({ currentUser, addNotification, systemSettings }:
                   </select>
                   <ChevronDown size={16} className="absolute right-4 top-1/2 -translate-y-1/2 text-text-secondary pointer-events-none" />
                 </div>
+
+                <div className="relative">
+                  <select
+                    className="appearance-none bg-surface border border-border rounded-2xl pl-5 pr-10 py-3.5 text-sm font-bold outline-none focus:border-primary cursor-pointer shadow-sm shadow-black/5"
+                    value={propertyFilter}
+                    onChange={(e) => setPropertyFilter(e.target.value)}
+                  >
+                    <option value="all">Todos os Vínculos</option>
+                    <option value="oficial">Patrimônio (Oficial)</option>
+                    <option value="locado">Locado (Aluguel)</option>
+                  </select>
+                  <ChevronDown size={16} className="absolute right-4 top-1/2 -translate-y-1/2 text-text-secondary pointer-events-none" />
+                </div>
+
+                <div className="relative">
+                  <select
+                    className="appearance-none bg-surface border border-border rounded-2xl pl-5 pr-10 py-3.5 text-sm font-bold outline-none focus:border-primary cursor-pointer shadow-sm shadow-black/5"
+                    value={secretariaFilter}
+                    onChange={(e) => setSecretariaFilter(e.target.value)}
+                  >
+                    <option value="all">Todas as Secretarias</option>
+                    {secretarias.map(sec => (
+                      <option key={sec} value={sec}>{sec}</option>
+                    ))}
+                  </select>
+                  <ChevronDown size={16} className="absolute right-4 top-1/2 -translate-y-1/2 text-text-secondary pointer-events-none" />
+                </div>
+
+                <button
+                  onClick={() => setMaintenanceFilter(!maintenanceFilter)}
+                  className={cn(
+                    "flex items-center gap-2 px-5 py-3.5 rounded-2xl font-bold text-sm transition-all border",
+                    maintenanceFilter 
+                      ? "bg-amber-500 text-white border-amber-600 shadow-lg shadow-amber-500/20" 
+                      : "bg-surface border-border text-text-secondary hover:bg-surface-hover shadow-sm shadow-black/5"
+                  )}
+                >
+                  <Wrench size={18} />
+                  <span className="hidden xl:inline">{maintenanceFilter ? "Mostrando Revisões" : "Filtrar Revisões"}</span>
+                  {maintenanceAlerts.length > 0 && !maintenanceFilter && (
+                    <span className="bg-rose-500 text-white text-[10px] w-5 h-5 rounded-full flex items-center justify-center animate-pulse">
+                      {maintenanceAlerts.length}
+                    </span>
+                  )}
+                </button>
 
                 <div className="bg-surface p-1 rounded-xl border border-border/40 flex">
                   <button
@@ -535,6 +755,15 @@ export const FrotaMunicipal = ({ currentUser, addNotification, systemSettings }:
                           </td>
                           <td className="px-6 py-5 text-right">
                             <div className="flex items-center justify-end gap-2">
+                              {canWrite && (
+                                <button
+                                  onClick={() => handleEditVehicle(vehicle)}
+                                  className="p-2.5 hover:bg-amber-500/10 text-amber-500 rounded-xl transition-all hover:scale-110"
+                                  title="Editar Status / Dados"
+                                >
+                                  <Settings size={18} />
+                                </button>
+                              )}
                               <button
                                 onClick={() => {
                                   setSelectedVehicle(vehicle);
@@ -547,21 +776,23 @@ export const FrotaMunicipal = ({ currentUser, addNotification, systemSettings }:
                               >
                                 <Eye size={18} />
                               </button>
-                              <button
-                                onClick={() => {
-                                  setSelectedVehicle(vehicle);
-                                  fetchOccurrences(vehicle.id);
-                                  setIsHistoryViewOnly(false);
-                                  setShowOccurrenceModal(true);
-                                }}
-                                className="p-2.5 hover:bg-primary/10 text-primary rounded-xl transition-all hover:scale-110"
-                                title="Registrar Ocorrência"
-                              >
-                                <History size={18} />
-                              </button>
                               {canWrite && (
                                 <button
-                                  onClick={() => handleDeleteVehicle(vehicle.id)}
+                                  onClick={() => {
+                                    setSelectedVehicle(vehicle);
+                                    fetchOccurrences(vehicle.id);
+                                    setIsHistoryViewOnly(false);
+                                    setShowOccurrenceModal(true);
+                                  }}
+                                  className="p-2.5 hover:bg-primary/10 text-primary rounded-xl transition-all hover:scale-110"
+                                  title="Registrar Ocorrência"
+                                >
+                                  <History size={18} />
+                                </button>
+                              )}
+                              {canWrite && (
+                                <button
+                                  onClick={() => setVehicleToDelete(vehicle.id)}
                                   className="p-2.5 hover:bg-rose-500/10 text-rose-500 rounded-xl transition-all hover:scale-110"
                                   title="Remover Veículo"
                                 >
@@ -588,14 +819,30 @@ export const FrotaMunicipal = ({ currentUser, addNotification, systemSettings }:
                   >
                     <div className="flex justify-between items-start mb-6">
                       <div className="flex-1">
-                        <h4 className="text-lg font-black text-text-primary uppercase leading-tight mb-1">{vehicle.nome}</h4>
+                        <div className="flex items-center gap-2 mb-1">
+                          <h4 className="text-lg font-black text-text-primary uppercase leading-tight">{vehicle.nome}</h4>
+                          <span className={cn(
+                            "text-[8px] font-black uppercase px-2 py-0.5 rounded-md border",
+                            vehicle.tipo_propriedade === 'oficial' ? "bg-blue-500/10 text-blue-600 border-blue-500/20" : "bg-purple-500/10 text-purple-600 border-purple-500/20"
+                          )}>
+                            {vehicle.tipo_propriedade}
+                          </span>
+                        </div>
                         <div className="flex items-center gap-2">
                           <span className="text-xs font-bold text-primary tracking-tighter bg-primary/5 px-2 py-0.5 rounded-lg border border-primary/10">{vehicle.placa}</span>
                           {getStatusBadge(vehicle.status)}
                         </div>
+                        <p className="text-[10px] font-black text-text-secondary uppercase tracking-widest mt-2 flex items-center gap-1">
+                          <BarChart3 size={12} className="text-primary/50" />
+                          {vehicle.secretaria}
+                        </p>
                       </div>
-                      <div className="w-10 h-10 rounded-xl bg-surface-hover flex items-center justify-center text-text-secondary group-hover:text-primary transition-colors">
-                        <Truck size={20} />
+                      <div className="w-12 h-12 rounded-2xl bg-surface-hover flex items-center justify-center text-text-secondary group-hover:text-primary transition-all group-hover:scale-110 shadow-inner">
+                        {vehicle.tipo_veiculo === 'Ônibus' ? <Eye size={24} /> : 
+                         vehicle.tipo_veiculo === 'Caminhão' ? <Truck size={24} /> :
+                         vehicle.tipo_veiculo === 'Máquina' ? <Settings size={24} /> :
+                         vehicle.tipo_veiculo === 'Moto' ? <Zap size={24} /> :
+                         <Truck size={24} />}
                       </div>
                     </div>
 
@@ -605,9 +852,29 @@ export const FrotaMunicipal = ({ currentUser, addNotification, systemSettings }:
                         <p className="text-sm font-black text-text-primary">{vehicle.km_atual} KM</p>
                       </div>
                       <div className="bg-surface-hover/50 p-3 rounded-2xl border border-border/40">
-                        <p className="text-[8px] font-black text-text-secondary uppercase tracking-widest mb-1.5">Secretaria</p>
-                        <p className="text-xs font-black text-text-primary uppercase truncate">{vehicle.secretaria}</p>
+                        <p className="text-[8px] font-black text-text-secondary uppercase tracking-widest mb-1.5">Próxima Revisão</p>
+                        <p className={cn(
+                          "text-sm font-black",
+                          vehicle.km_proxima_revisao ? "text-amber-600" : "text-text-secondary opacity-50"
+                        )}>
+                          {vehicle.km_proxima_revisao ? `${vehicle.km_proxima_revisao} KM` : 'N/D'}
+                        </p>
                       </div>
+                    </div>
+
+                    <div className="space-y-2 mb-6">
+                      {vehicle.renavam && (
+                        <div className="flex items-center justify-between text-[10px]">
+                          <span className="text-text-secondary font-bold uppercase tracking-tight">Renavam:</span>
+                          <span className="font-black text-text-primary">{vehicle.renavam}</span>
+                        </div>
+                      )}
+                      {vehicle.chassi && (
+                        <div className="flex items-center justify-between text-[10px]">
+                          <span className="text-text-secondary font-bold uppercase tracking-tight">Chassi:</span>
+                          <span className="font-black text-text-primary text-right truncate ml-2">{vehicle.chassi}</span>
+                        </div>
+                      )}
                     </div>
 
                     {vehicle.observacao && (
@@ -622,7 +889,17 @@ export const FrotaMunicipal = ({ currentUser, addNotification, systemSettings }:
                         <span className="text-[8px] font-black text-text-secondary uppercase tracking-widest">Ano / Tipo</span>
                         <span className="text-[11px] font-black text-text-primary">{vehicle.ano} • {vehicle.tipo_propriedade.toUpperCase()}</span>
                       </div>
-                      <div className="flex items-center gap-2">
+                      <div className="flex flex-wrap items-center gap-2">
+                        {canWrite && (
+                          <button
+                            onClick={() => handleEditVehicle(vehicle)}
+                            className="flex items-center gap-2 px-3 py-2 bg-amber-500/10 text-amber-500 rounded-xl transition-all hover:scale-105 active:scale-95"
+                            title="Editar Status / Dados"
+                          >
+                            <Settings size={16} />
+                            <span className="text-[10px] font-black uppercase">Editar</span>
+                          </button>
+                        )}
                         <button
                           onClick={() => {
                             setSelectedVehicle(vehicle);
@@ -630,29 +907,34 @@ export const FrotaMunicipal = ({ currentUser, addNotification, systemSettings }:
                             setIsHistoryViewOnly(true);
                             setShowOccurrenceModal(true);
                           }}
-                          className="p-3 bg-blue-500/10 text-blue-500 rounded-xl transition-all hover:scale-105 active:scale-95"
+                          className="flex items-center gap-2 px-3 py-2 bg-blue-500/10 text-blue-500 rounded-xl transition-all hover:scale-105 active:scale-95"
                           title="Visualizar Histórico"
                         >
-                          <Eye size={18} />
-                        </button>
-                        <button
-                          onClick={() => {
-                            setSelectedVehicle(vehicle);
-                            fetchOccurrences(vehicle.id);
-                            setIsHistoryViewOnly(false);
-                            setShowOccurrenceModal(true);
-                          }}
-                          className="p-3 bg-primary/10 text-primary rounded-xl transition-all hover:scale-105 active:scale-95"
-                          title="Registrar Ocorrência"
-                        >
-                          <History size={18} />
+                          <Eye size={16} />
+                          <span className="text-[10px] font-black uppercase">Histórico</span>
                         </button>
                         {canWrite && (
                           <button
-                            onClick={() => handleDeleteVehicle(vehicle.id)}
-                            className="p-3 bg-rose-500/10 text-rose-500 rounded-xl transition-all hover:scale-105 active:scale-95"
+                            onClick={() => {
+                              setSelectedVehicle(vehicle);
+                              fetchOccurrences(vehicle.id);
+                              setIsHistoryViewOnly(false);
+                              setShowOccurrenceModal(true);
+                            }}
+                            className="flex items-center gap-2 px-3 py-2 bg-primary/10 text-primary rounded-xl transition-all hover:scale-105 active:scale-95"
+                            title="Registrar Ocorrência"
                           >
-                            <Trash2 size={18} />
+                            <History size={16} />
+                            <span className="text-[10px] font-black uppercase">Ocorrência</span>
+                          </button>
+                        )}
+                        {canWrite && (
+                          <button
+                            onClick={() => setVehicleToDelete(vehicle.id)}
+                            className="p-2 bg-rose-500/10 text-rose-500 rounded-xl transition-all hover:scale-105 active:scale-95"
+                            title="Excluir"
+                          >
+                            <Trash2 size={16} />
                           </button>
                         )}
                       </div>
@@ -666,15 +948,15 @@ export const FrotaMunicipal = ({ currentUser, addNotification, systemSettings }:
       </div>
 
       {/* Modals - (Keeping them identical but inside the component) */}
-      {/* Modal Novo Veículo */}
+      {/* Modal Novo / Editar Veículo */}
       <AnimatePresence>
-        {showNewVehicleModal && (
+        {(showNewVehicleModal || showEditVehicleModal) && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
             <motion.div
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              onClick={() => setShowNewVehicleModal(false)}
+              onClick={() => { setShowNewVehicleModal(false); setShowEditVehicleModal(false); }}
               className="absolute inset-0 bg-black/60 backdrop-blur-sm"
             />
             <motion.div
@@ -689,12 +971,12 @@ export const FrotaMunicipal = ({ currentUser, addNotification, systemSettings }:
                     <Truck size={24} />
                   </div>
                   <div>
-                    <h3 className="text-lg md:text-xl font-bold">Cadastrar Novo Veículo</h3>
+                    <h3 className="text-lg md:text-xl font-bold">{showEditVehicleModal ? 'Editar Veículo / Status' : 'Cadastrar Novo Veículo'}</h3>
                     <p className="text-[10px] md:text-xs text-text-secondary font-medium uppercase tracking-widest">Frota Municipal</p>
                   </div>
                 </div>
                 <button
-                  onClick={() => setShowNewVehicleModal(false)}
+                  onClick={() => { setShowNewVehicleModal(false); setShowEditVehicleModal(false); }}
                   className="p-2 hover:bg-surface-hover rounded-xl text-text-secondary transition-colors"
                 >
                   <X size={24} />
@@ -717,6 +999,54 @@ export const FrotaMunicipal = ({ currentUser, addNotification, systemSettings }:
                         />
                       </div>
                     </div>
+
+                    <div className="space-y-2">
+                      <label className="text-[10px] font-black text-text-secondary uppercase tracking-widest ml-1">Tipo de Veículo</label>
+                      <div className="relative">
+                        <select
+                          className="w-full bg-surface-hover border border-border rounded-2xl px-5 py-3.5 text-sm outline-none focus:border-primary transition-all font-bold appearance-none cursor-pointer"
+                          value={newVehicleData.tipo_veiculo}
+                          onChange={(e) => setNewVehicleData({ ...newVehicleData, tipo_veiculo: e.target.value })}
+                        >
+                          <option value="Carro">Carro / Passeio</option>
+                          <option value="Caminhonete">Caminhonete / Van</option>
+                          <option value="Caminhão">Caminhão</option>
+                          <option value="Ônibus">Ônibus / Micro</option>
+                          <option value="Moto">Moto</option>
+                          <option value="Máquina">Máquina Pesada</option>
+                        </select>
+                        <ChevronDown size={18} className="absolute right-4 top-1/2 -translate-y-1/2 text-text-secondary pointer-events-none" />
+                      </div>
+                    </div>
+
+                    <div className="space-y-2">
+                      <label className="text-[10px] font-black text-text-secondary uppercase tracking-widest ml-1">KM Atual</label>
+                      <div className="relative group">
+                        <BarChart3 size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-text-secondary group-focus-within:text-primary transition-colors" />
+                        <input
+                          required
+                          type="text"
+                          className="w-full bg-surface-hover border border-border rounded-2xl pl-12 pr-5 py-3.5 text-sm outline-none focus:border-primary transition-all font-bold"
+                          placeholder="Ex: 50.000"
+                          value={newVehicleData.km_atual}
+                          onChange={(e) => setNewVehicleData({ ...newVehicleData, km_atual: e.target.value })}
+                        />
+                      </div>
+                    </div>
+
+                    <div className="space-y-2">
+                      <label className="text-[10px] font-black text-text-secondary uppercase tracking-widest ml-1 text-amber-600">KM Próxima Revisão</label>
+                      <div className="relative group">
+                        <Wrench size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-amber-500 group-focus-within:text-primary transition-colors" />
+                        <input
+                          type="text"
+                          className="w-full bg-surface-hover border border-border rounded-2xl pl-12 pr-5 py-3.5 text-sm outline-none focus:border-primary transition-all font-bold"
+                          placeholder="Ex: 60.000"
+                          value={newVehicleData.km_proxima_revisao}
+                          onChange={(e) => setNewVehicleData({ ...newVehicleData, km_proxima_revisao: e.target.value })}
+                        />
+                      </div>
+                    </div>
                     <div className="space-y-2">
                       <label className="text-[10px] font-black text-text-secondary uppercase tracking-widest ml-1">Placa</label>
                       <div className="relative group">
@@ -730,6 +1060,7 @@ export const FrotaMunicipal = ({ currentUser, addNotification, systemSettings }:
                           onChange={(e) => setNewVehicleData({ ...newVehicleData, placa: e.target.value })}
                         />
                       </div>
+                      <p className="text-[9px] text-text-secondary font-medium ml-1">A placa deve ser única no sistema.</p>
                     </div>
                     <div className="space-y-2">
                       <label className="text-[10px] font-black text-text-secondary uppercase tracking-widest ml-1">Cor</label>
@@ -801,6 +1132,7 @@ export const FrotaMunicipal = ({ currentUser, addNotification, systemSettings }:
                         onChange={(e) => setNewVehicleData({ ...newVehicleData, km_atual: e.target.value })}
                       />
                     </div>
+                    <p className="text-[9px] text-text-secondary font-medium ml-1">Quilometragem mostrada no painel do veículo.</p>
                   </div>
                   <div className="space-y-2">
                     <label className="text-[10px] font-black text-text-secondary uppercase tracking-widest ml-1">Secretaria Responsável</label>
@@ -812,6 +1144,7 @@ export const FrotaMunicipal = ({ currentUser, addNotification, systemSettings }:
                       value={newVehicleData.secretaria}
                       onChange={(e) => setNewVehicleData({ ...newVehicleData, secretaria: e.target.value })}
                     />
+                    <p className="text-[9px] text-text-secondary font-medium ml-1">Órgão que utiliza o veículo majoritariamente.</p>
                   </div>
                   <div className="space-y-2">
                     <label className="text-[10px] font-black text-text-secondary uppercase tracking-widest ml-1">Status de Disponibilidade</label>
@@ -821,13 +1154,14 @@ export const FrotaMunicipal = ({ currentUser, addNotification, systemSettings }:
                         value={newVehicleData.status}
                         onChange={(e) => setNewVehicleData({ ...newVehicleData, status: e.target.value as any })}
                       >
-                        <option value="em_dia">Em Dia</option>
-                        <option value="parado">Parado</option>
-                        <option value="manutencao">Manutenção</option>
-                        <option value="em_uso">Em Uso</option>
+                        <option value="em_dia">Em Dia (Pronto para Uso)</option>
+                        <option value="parado">Parado (Fora de Operação)</option>
+                        <option value="manutencao">Em Manutenção (Na Oficina)</option>
+                        <option value="em_uso">Em Uso (Em Viagem/Serviço)</option>
                       </select>
                       <ChevronDown size={18} className="absolute right-4 top-1/2 -translate-y-1/2 text-text-secondary pointer-events-none" />
                     </div>
+                    <p className="text-[9px] text-text-secondary font-medium ml-1">Isso ajuda a saber quais veículos podem ser escalados.</p>
                   </div>
                   <div className="space-y-2">
                     <label className="text-[10px] font-black text-text-secondary uppercase tracking-widest ml-1">Tipo de Propriedade</label>
@@ -882,7 +1216,7 @@ export const FrotaMunicipal = ({ currentUser, addNotification, systemSettings }:
                     type="submit"
                     className="order-1 sm:order-2 px-10 py-3.5 bg-primary text-white rounded-2xl text-xs font-black uppercase tracking-widest hover:bg-primary/90 transition-all shadow-lg shadow-primary/20"
                   >
-                    Cadastrar Veículo
+                    {showEditVehicleModal ? 'Salvar Alterações' : 'Cadastrar Veículo'}
                   </button>
                 </div>
               </form>
@@ -910,22 +1244,65 @@ export const FrotaMunicipal = ({ currentUser, addNotification, systemSettings }:
             >
               <div className="p-8 border-b border-border flex justify-between items-center bg-surface-hover/30">
                 <div className="flex items-center gap-4">
-                  <div className={cn("p-3 rounded-2xl", isHistoryViewOnly ? "bg-blue-500/10 text-blue-500" : "bg-amber-500/10 text-amber-500")}>
-                    {isHistoryViewOnly ? <Eye size={24} /> : <History size={24} />}
+                  <div className={cn("p-4 rounded-2xl", isHistoryViewOnly ? "bg-primary/10 text-primary" : "bg-amber-500/10 text-amber-500")}>
+                    {isHistoryViewOnly ? <Truck size={28} /> : <History size={28} />}
                   </div>
                   <div>
-                    <h3 className="text-xl font-bold">{selectedVehicle.nome} - <span className="text-primary">{selectedVehicle.placa}</span></h3>
-                    <p className="text-xs text-text-secondary font-medium uppercase tracking-widest">
-                      {isHistoryViewOnly ? "Visualização de Histórico" : "Registrar ocorrência e visualizar histórico"}
-                    </p>
+                    <h3 className="text-xl md:text-2xl font-black text-text-primary tracking-tight">
+                      {selectedVehicle.nome} 
+                      <span className="ml-3 text-primary bg-primary/10 px-3 py-1 rounded-xl text-lg">{selectedVehicle.placa}</span>
+                    </h3>
+                    <div className="flex items-center gap-3 mt-1">
+                      <p className="text-[10px] text-text-secondary font-black uppercase tracking-widest border-r border-border/40 pr-3">Dossiê do Veículo</p>
+                      <div className="flex items-center gap-2">
+                        {getStatusBadge(selectedVehicle.status)}
+                        <span className="text-[10px] font-bold text-text-secondary uppercase">{selectedVehicle.secretaria}</span>
+                      </div>
+                    </div>
                   </div>
                 </div>
-                <button
-                  onClick={() => setShowOccurrenceModal(false)}
-                  className="p-2 hover:bg-surface-hover rounded-xl text-text-secondary transition-colors"
-                >
-                  <X size={24} />
-                </button>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => {
+                      const doc = new jsPDF();
+                      doc.setFontSize(22);
+                      doc.text(`Dossiê do Veículo: ${selectedVehicle.nome}`, 14, 25);
+                      doc.setFontSize(12);
+                      doc.text(`Placa: ${selectedVehicle.placa}`, 14, 35);
+                      doc.text(`Secretaria: ${selectedVehicle.secretaria}`, 14, 42);
+                      doc.text(`KM Atual: ${selectedVehicle.km_atual} KM`, 14, 49);
+                      doc.text(`Gerado em: ${format(new Date(), 'dd/MM/yyyy HH:mm')}`, 14, 56);
+
+                      const tableData = occurrences.map(o => [
+                        format(new Date(o.createdAt), 'dd/MM/yyyy'),
+                        o.tipo.replace('_', ' ').toUpperCase(),
+                        o.descricao,
+                        o.km,
+                        o.custo ? `R$ ${o.custo}` : '-'
+                      ]);
+
+                      autoTable(doc, {
+                        startY: 65,
+                        head: [['Data', 'Tipo', 'Descrição', 'KM', 'Custo']],
+                        body: tableData,
+                        headStyles: { fillColor: [59, 130, 246] }
+                      });
+
+                      doc.save(`Dossie_${selectedVehicle.placa}.pdf`);
+                    }}
+                    className="p-2.5 bg-surface border border-border/40 rounded-xl text-text-secondary hover:text-primary transition-all flex items-center gap-2"
+                    title="Imprimir Dossiê"
+                  >
+                    <Printer size={20} />
+                    <span className="hidden sm:inline text-xs font-black uppercase tracking-widest">Imprimir Dossiê</span>
+                  </button>
+                  <button
+                    onClick={() => setShowOccurrenceModal(false)}
+                    className="p-2 hover:bg-surface-hover rounded-xl text-text-secondary transition-colors"
+                  >
+                    <X size={24} />
+                  </button>
+                </div>
               </div>
 
               <div className="flex-1 overflow-y-auto p-8 space-y-10">
@@ -938,19 +1315,28 @@ export const FrotaMunicipal = ({ currentUser, addNotification, systemSettings }:
                     </div>
 
               <form onSubmit={handleSaveOccurrence} className="bg-surface-hover/30 p-4 md:p-6 rounded-[2rem] border border-border/50 space-y-4 md:space-y-6">
-                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 md:gap-6">
-                  <div className="space-y-2">
-                    <label className="text-[10px] font-black text-text-secondary uppercase tracking-widest ml-1">Tipo de Ocorrência</label>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4 md:gap-6">
+                    <div className="space-y-2">
+                      <label className="text-[10px] font-black text-text-secondary uppercase tracking-widest ml-1">Data da Ocorrência</label>
+                      <input
+                        type="datetime-local"
+                        className="w-full bg-surface border border-border rounded-2xl px-5 py-3 text-sm outline-none focus:border-primary transition-all font-bold"
+                        value={newOccurrenceData.createdAt}
+                        onChange={(e) => setNewOccurrenceData({ ...newOccurrenceData, createdAt: e.target.value })}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-[10px] font-black text-text-secondary uppercase tracking-widest ml-1">Tipo de Ocorrência</label>
                     <div className="relative group">
                       <select
                         className="w-full bg-surface border border-border rounded-2xl px-5 py-3 text-sm outline-none focus:border-primary transition-all font-bold appearance-none cursor-pointer"
                         value={newOccurrenceData.tipo}
                         onChange={(e) => setNewOccurrenceData({ ...newOccurrenceData, tipo: e.target.value as any })}
                       >
-                        <option value="quebra">Quebra</option>
-                        <option value="avaria">Avaria</option>
-                        <option value="manutencao_preventiva">Manutenção Preventiva</option>
-                        <option value="retorno">Retorno de Uso</option>
+                        <option value="manutencao_preventiva">Manutenção Preventiva (Troca de óleo, filtros...)</option>
+                        <option value="quebra">Quebra (Falha mecânica inesperada)</option>
+                        <option value="avaria">Avaria (Bati, arranhei, pneu furado...)</option>
+                        <option value="retorno">Retorno de Oficina (Veículo pronto)</option>
                       </select>
                       <ChevronDown size={18} className="absolute right-4 top-1/2 -translate-y-1/2 text-text-secondary pointer-events-none" />
                     </div>
@@ -963,10 +1349,10 @@ export const FrotaMunicipal = ({ currentUser, addNotification, systemSettings }:
                         value={newOccurrenceData.status_resultado}
                         onChange={(e) => setNewOccurrenceData({ ...newOccurrenceData, status_resultado: e.target.value as any })}
                       >
-                        <option value="em_dia">Em Dia</option>
-                        <option value="parado">Parado</option>
-                        <option value="manutencao">Manutenção</option>
-                        <option value="em_uso">Em Uso</option>
+                        <option value="em_dia">Em Dia (Pronto para Uso)</option>
+                        <option value="parado">Parado (Fora de Operação)</option>
+                        <option value="manutencao">Em Manutenção (Na Oficina)</option>
+                        <option value="em_uso">Em Uso (Em Viagem/Serviço)</option>
                       </select>
                       <ChevronDown size={18} className="absolute right-4 top-1/2 -translate-y-1/2 text-text-secondary pointer-events-none" />
                     </div>
@@ -982,6 +1368,20 @@ export const FrotaMunicipal = ({ currentUser, addNotification, systemSettings }:
                         placeholder="0"
                         value={newOccurrenceData.km}
                         onChange={(e) => setNewOccurrenceData({ ...newOccurrenceData, km: e.target.value })}
+                      />
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-black text-text-secondary uppercase tracking-widest ml-1 text-amber-600">KM Próxima Revisão</label>
+                    <div className="relative group">
+                      <Wrench size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-amber-500" />
+                      <input
+                        type="number"
+                        className="w-full bg-surface border border-border rounded-2xl pl-10 pr-5 py-3 text-sm outline-none focus:border-primary transition-all font-bold"
+                        placeholder="Ex: 60000"
+                        value={newOccurrenceData.proximo_km}
+                        onChange={(e) => setNewOccurrenceData({ ...newOccurrenceData, proximo_km: e.target.value })}
                       />
                     </div>
                   </div>
@@ -1136,6 +1536,39 @@ export const FrotaMunicipal = ({ currentUser, addNotification, systemSettings }:
                   className="px-10 py-3.5 bg-background border border-border/40 text-text-secondary rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-surface transition-all"
                 >
                   Fechar
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+      {/* Local Delete Confirmation Modal */}
+      <AnimatePresence>
+        {vehicleToDelete && (
+          <div className="fixed inset-0 z-[500] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.95, y: 20 }} 
+              animate={{ opacity: 1, scale: 1, y: 0 }} 
+              exit={{ opacity: 0, scale: 0.95, y: 20 }} 
+              className="bg-background w-full max-w-sm relative z-10 text-center p-8 rounded-[32px] shadow-2xl border border-border"
+            >
+              <div className="w-16 h-16 bg-rose-500/10 rounded-full flex items-center justify-center text-rose-500 mx-auto mb-6 shrink-0">
+                <Trash2 size={32} />
+              </div>
+              <h3 className="text-xl font-bold mb-2">Excluir Veículo</h3>
+              <p className="text-text-secondary text-sm mb-8">Tem certeza que deseja remover este veículo da frota? Esta ação não pode ser desfeita.</p>
+              <div className="flex flex-col gap-2">
+                <button 
+                  onClick={() => handleDeleteVehicle(vehicleToDelete)} 
+                  className="w-full bg-rose-500 hover:bg-rose-600 text-white py-4 rounded-xl font-black uppercase tracking-widest text-xs transition-all shadow-xl shadow-rose-500/20"
+                >
+                  Confirmar Exclusão
+                </button>
+                <button 
+                  onClick={() => setVehicleToDelete(null)} 
+                  className="w-full py-4 rounded-xl font-black uppercase tracking-widest text-xs text-text-secondary hover:bg-surface-hover transition-all"
+                >
+                  Cancelar
                 </button>
               </div>
             </motion.div>

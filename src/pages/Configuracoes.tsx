@@ -297,7 +297,12 @@ const Configuracoes = ({
                           user.role === 'gestor' ? "bg-amber-500/10 text-amber-500" : 
                           "bg-blue-500/10 text-blue-500"
                         )}>
-                          {user.role}
+                          {user.role === 'superadmin' ? 'Super Admin' :
+                           user.role === 'admin' ? 'Administrador' :
+                           user.role === 'gestor' ? 'Gestor' :
+                           user.role === 'visualizador' ? 'Visualizador' :
+                           user.role === 'compras' ? 'Compras' :
+                           user.role === 'transportes' ? 'Transportes' : user.role}
                         </span>
                         <span className={cn(
                           "px-2 py-0.5 rounded-lg text-[9px] font-black uppercase tracking-widest",

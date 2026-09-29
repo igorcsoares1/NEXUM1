@@ -109,7 +109,7 @@ export default function ChecklistPublico() {
     const fornecedoresConfirmados = fornecedoresUnicos
       .filter(f => fornecedoresChecados[f.id] !== false)
       .map(f => f.vendor)
-      .join(', ') || 'N/A';
+      .join(', ') || 'N/D';
 
     let result;
     
@@ -128,8 +128,8 @@ export default function ChecklistPublico() {
       // Integração solicitada: salvar recibo digital no Supabase
       try {
         const nomeCompleto = nome.trim();
-        const processoNumero = checklists[0]?.processNumber || 'N/A';
-        const notaFiscal = checklists[0]?.invoiceValue || 'N/A';
+        const processoNumero = checklists[0]?.processNumber || 'N/D';
+        const notaFiscal = checklists[0]?.invoiceValue || 'N/D';
         const documentosConfirmados = checklists.flatMap(c => 
           (c.items || []).filter(i => i.checked).map(i => i.label)
         ).filter((v, i, a) => a.indexOf(v) === i);

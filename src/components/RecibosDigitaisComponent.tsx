@@ -28,17 +28,20 @@ import {
 export function RecibosDigitaisComponent({ 
   currentUser, 
   compact = false,
-  onCountChange
+  onCountChange,
+  addNotification
 }: { 
   currentUser?: any, 
   compact?: boolean,
-  onCountChange?: (count: number) => void
+  onCountChange?: (count: number) => void,
+  addNotification?: (title: string, message: string, type?: 'success' | 'error' | 'info' | 'warning') => void;
 }) {
   const [recibos, setRecibos] = useState<Recibo[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedRecibo, setSelectedRecibo] = useState<Recibo | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
+  const [reciboToDelete, setReciboToDelete] = useState<string | null>(null);
   const itemsPerPage = compact ? 5 : 10;
 
   const fetchRecibos = async () => {
@@ -89,13 +92,10 @@ export function RecibosDigitaisComponent({
     };
   }, []);
 
-  const handleDeleteRecibo = async (id: string, e: React.MouseEvent) => {
-    e.stopPropagation();
+  const handleDeleteRecibo = async (id: string, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
     
     try {
-      const confirmed = window.confirm('Tem certeza que deseja apagar este recibo?');
-      if (!confirmed) return;
-
       // Atualização imediata e otimista na interface
       setRecibos(prev => {
         const updated = prev.filter(r => r.id !== id);
@@ -109,9 +109,11 @@ export function RecibosDigitaisComponent({
 
       // Persistência robusta: salva nos IDs excluídos para nunca voltar no refresh
       await markReciboAsDeleted(id);
+      if (addNotification) addNotification("Sucesso", "Recibo apagado com sucesso.", "success");
+      setReciboToDelete(null);
     } catch (err: any) {
       console.error('Erro ao apagar recibo:', err);
-      alert(`Falha ao apagar recibo: ${err.message || 'Verifique suas permissões.'}`);
+      if (addNotification) addNotification("Erro", `Falha ao apagar recibo: ${err.message || 'Verifique suas permissões.'}`, "error");
     }
   };
 
@@ -209,12 +211,12 @@ export function RecibosDigitaisComponent({
                                   "text-[9px] font-black px-2.5 py-1 rounded-full uppercase tracking-tighter",
                                   recibo.status === 'pendente' ? "bg-amber-500/10 text-amber-500" : "bg-emerald-500/10 text-emerald-500"
                                 )}>
-                                  {recibo.status || 'concluído'}
+                                  {recibo.status === 'pendente' ? 'Pendente' : (recibo.status === 'recebido' || !recibo.status ? 'Concluído' : recibo.status)}
                                 </span>
                               </div>
                               
                               <p className="text-base font-black text-text-primary truncate leading-tight mb-1 group-hover:text-primary transition-colors">
-                                {recibo.fornecedor || (recibo.fornecedores_lista && recibo.fornecedores_lista[0]) || 'Fornecedor n/a'}
+                                {recibo.fornecedor || (recibo.fornecedores_lista && recibo.fornecedores_lista[0]) || 'Fornecedor N/D'}
                               </p>
                               
                               <div className="flex flex-wrap items-center gap-4 mt-2">
@@ -235,7 +237,10 @@ export function RecibosDigitaisComponent({
   
                         {isAuthorizedToDelete && (
                           <button
-                            onClick={(e) => handleDeleteRecibo(recibo.id, e)}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setReciboToDelete(recibo.id);
+                            }}
                             className="absolute top-4 right-4 p-2.5 bg-rose-500/5 text-rose-500 rounded-2xl hover:bg-rose-500 hover:text-white transition-all shadow-sm z-10 border border-rose-500/10 hover:shadow-lg hover:shadow-rose-500/20"
                             title="Apagar Recibo"
                           >
@@ -383,7 +388,7 @@ export function RecibosDigitaisComponent({
                             ))}
                           </ul>
                         ) : (
-                          <p className="text-xs md:text-sm font-black text-text-primary leading-tight p-3 bg-surface/50 rounded-xl border border-border/30">{selectedRecibo.fornecedor || 'N/A'}</p>
+                          <p className="text-xs md:text-sm font-black text-text-primary leading-tight p-3 bg-surface/50 rounded-xl border border-border/30">{selectedRecibo.fornecedor || 'N/D'}</p>
                         )}
                         <p className="text-[9px] md:text-[10px] text-text-secondary font-bold mt-2 opacity-60">
                           {selectedRecibo.fornecedores_lista?.length || 0} fornecedor(es) confirmado(s)
@@ -411,8 +416,8 @@ export function RecibosDigitaisComponent({
                 {isAuthorizedToDelete && (
                   <button 
                     onClick={(e) => {
-                      handleDeleteRecibo(selectedRecibo.id, e as any);
-                      setSelectedRecibo(null);
+                      e.stopPropagation();
+                      setReciboToDelete(selectedRecibo.id);
                     }}
                     className="flex-1 py-4 md:py-5 bg-rose-500/10 text-rose-500 border border-rose-500/20 rounded-2xl md:rounded-[24px] text-xs font-black uppercase tracking-widest transition-all hover:bg-rose-500 hover:text-white active:scale-[0.98] flex items-center justify-center gap-2"
                   >
@@ -427,6 +432,46 @@ export function RecibosDigitaisComponent({
                   )}
                 >
                   Fechar Auditoria
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+      {/* Local Delete Confirmation Modal */}
+      <AnimatePresence>
+        {reciboToDelete && (
+          <div className="fixed inset-0 z-[400] flex items-center justify-center p-4">
+            <motion.div 
+              initial={{ opacity: 0 }} 
+              animate={{ opacity: 1 }} 
+              exit={{ opacity: 0 }} 
+              onClick={() => setReciboToDelete(null)} 
+              className="absolute inset-0 bg-black/60 backdrop-blur-sm" 
+            />
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.95, y: 20 }} 
+              animate={{ opacity: 1, scale: 1, y: 0 }} 
+              exit={{ opacity: 0, scale: 0.95, y: 20 }} 
+              className="bg-background w-full max-w-sm relative z-10 text-center p-8 rounded-[32px] shadow-2xl border border-border"
+            >
+              <div className="w-16 h-16 bg-rose-500/10 rounded-full flex items-center justify-center text-rose-500 mx-auto mb-6 shrink-0">
+                <Trash2 size={32} />
+              </div>
+              <h3 className="text-xl font-bold mb-2">Excluir Recibo</h3>
+              <p className="text-text-secondary text-sm mb-8">Tem certeza que deseja apagar este recibo? Esta ação não pode ser desfeita.</p>
+              <div className="flex flex-col gap-2">
+                <button 
+                  onClick={() => handleDeleteRecibo(reciboToDelete)} 
+                  className="w-full bg-rose-500 hover:bg-rose-600 text-white py-4 rounded-xl font-black uppercase tracking-widest text-xs transition-all shadow-xl shadow-rose-500/20"
+                >
+                  Confirmar Exclusão
+                </button>
+                <button 
+                  onClick={() => setReciboToDelete(null)} 
+                  className="w-full py-4 rounded-xl font-black uppercase tracking-widest text-xs text-text-secondary hover:bg-surface-hover transition-all"
+                >
+                  Cancelar
                 </button>
               </div>
             </motion.div>

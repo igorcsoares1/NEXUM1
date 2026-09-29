@@ -40,7 +40,7 @@ import { DEFAULT_CHECKLIST_DOCUMENTS } from '../constants';
 import { generateChecklistPDF, generateChecklistsReportPDF } from '../utils/pdf';
 import { fetchChecklistConfirmations, deleteChecklistConfirmation } from '../services/checklists';
 import { PrintHeader } from './ui/PrintHeader';
-import { processCurrencyInput, parseCurrencyToNumber, formatCurrency } from '../utils/format';
+import { processCurrencyInput, parseCurrencyToNumber, formatCurrency, normalizeDateForInput, extractDateFromText } from '../utils/format';
 import { getContractTotalValue, getContractBalance } from '../services/contracts';
 
 interface ModalsProps {
@@ -113,6 +113,7 @@ interface ModalsProps {
   handleRemoveItem: (id: string) => void;
   servidores: Servidor[];
   canDelete?: boolean;
+  canEdit?: boolean;
   handleDeleteDaily?: (id: string) => void;
   handleDeleteChecklist?: (id: string) => void;
   showImportMonthModal: boolean;
@@ -137,7 +138,7 @@ export const Modals = ({
   showCriticalModal, setShowCriticalModal, criticalContracts,
   showSelectedChecklistReport, setShowSelectedChecklistReport,
   handleGenerateAIItems, isGeneratingAI, newItemLabel, setNewItemLabel, handleAddItem, handleRemoveItem, contracts, servidores = [],
-  canDelete, handleDeleteDaily, handleDeleteChecklist,
+  canDelete, canEdit, handleDeleteDaily, handleDeleteChecklist,
   showImportMonthModal, setShowImportMonthModal, selectedImportMonth, setSelectedImportMonth, proceedWithImportFuel
 }: ModalsProps) => {
   const months = ['janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho', 'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro'];
@@ -148,6 +149,7 @@ export const Modals = ({
   const [sharedId, setSharedId] = React.useState<string | null>(null);
   const [contractSearchTerm, setContractSearchTerm] = React.useState('');
   const [showContractDropdown, setShowContractDropdown] = React.useState(false);
+  const [confToDelete, setConfToDelete] = React.useState<string | null>(null);
 
   const filteredContractsForSelection = React.useMemo(() => {
     if (!contractSearchTerm) return contracts;
@@ -206,12 +208,11 @@ export const Modals = ({
   };
 
   const handleDeleteConf = async (id: string) => {
-    if (!window.confirm('Tem certeza que deseja excluir esta confirmação?')) return;
-    
     const success = await deleteChecklistConfirmation(id);
     if (success) {
       setConfirmations(prev => prev.filter(c => c.id !== id));
     }
+    setConfToDelete(null);
   };
 
   return (
@@ -484,8 +485,34 @@ export const Modals = ({
                   <div className="space-y-1.5"><label className="text-[10px] font-bold text-text-secondary uppercase tracking-wider ml-1">Número do Contrato</label><input type="text" className="w-full bg-surface-hover border border-border rounded-xl px-4 py-3 outline-none focus:border-primary transition-all text-sm font-bold shadow-inner" value={newContractData.number} onChange={(e) => setNewContractData({ ...newContractData, number: e.target.value })} required /></div>
                   <div className="space-y-1.5"><label className="text-[10px] font-bold text-text-secondary uppercase tracking-wider ml-1">Fornecedor</label><input type="text" className="w-full bg-surface-hover border border-border rounded-xl px-4 py-3 outline-none focus:border-primary transition-all text-sm font-bold shadow-inner" value={newContractData.vendor} onChange={(e) => setNewContractData({ ...newContractData, vendor: e.target.value })} required /></div>
                   <div className="md:col-span-2 space-y-1.5"><label className="text-[10px] font-bold text-text-secondary uppercase tracking-wider ml-1">Objeto do Contrato</label><textarea className="w-full bg-surface-hover border border-border rounded-xl px-4 py-3 outline-none focus:border-primary transition-all text-sm font-bold shadow-inner min-h-[80px] resize-none" value={newContractData.object} onChange={(e) => setNewContractData({ ...newContractData, object: e.target.value })} required /></div>
-                  <div className="space-y-1.5"><label className="text-[10px] font-bold text-text-secondary uppercase tracking-wider ml-1">Vigência (Ex: 12 meses)</label><input type="text" className="w-full bg-surface-hover border border-border rounded-xl px-4 py-3 outline-none focus:border-primary transition-all text-sm font-bold shadow-inner" value={newContractData.validity} onChange={(e) => setNewContractData({ ...newContractData, validity: e.target.value })} required /></div>
-                  <div className="space-y-1.5"><label className="text-[10px] font-bold text-text-secondary uppercase tracking-wider ml-1">Data de Vencimento</label><input type="date" className="w-full bg-surface-hover border border-border rounded-xl px-4 py-3 outline-none focus:border-primary transition-all text-sm font-bold shadow-inner" value={newContractData.expiryDate} onChange={(e) => setNewContractData({ ...newContractData, expiryDate: e.target.value })} required /></div>
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-bold text-text-secondary uppercase tracking-wider ml-1">Vigência (Ex: 12 meses)</label>
+                    <input 
+                      type="text" 
+                      className="w-full bg-surface-hover border border-border rounded-xl px-4 py-3 outline-none focus:border-primary transition-all text-sm font-bold shadow-inner" 
+                      value={newContractData.validity || ''} 
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        const updates: any = { validity: val };
+                        if (!newContractData.expiryDate) {
+                          const extracted = extractDateFromText(val);
+                          if (extracted) updates.expiryDate = extracted;
+                        }
+                        setNewContractData({ ...newContractData, ...updates });
+                      }} 
+                      required 
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-bold text-text-secondary uppercase tracking-wider ml-1">Data de Vencimento</label>
+                    <input 
+                      type="date" 
+                      className="w-full bg-surface-hover border border-border rounded-xl px-4 py-3 outline-none focus:border-primary transition-all text-sm font-bold shadow-inner" 
+                      value={normalizeDateForInput(newContractData.expiryDate)} 
+                      onChange={(e) => setNewContractData({ ...newContractData, expiryDate: e.target.value })} 
+                      required 
+                    />
+                  </div>
                   <div className="space-y-1.5"><label className="text-[10px] font-bold text-text-secondary uppercase tracking-wider ml-1">Valor Total (R$)</label><input type="text" className="w-full bg-surface-hover border border-border rounded-xl px-4 py-3 outline-none focus:border-primary transition-all text-sm font-bold shadow-inner" value={newContractData.totalValue} onChange={(e) => setNewContractData({ ...newContractData, totalValue: processCurrencyInput(e.target.value) })} required /></div>
                   <div className="space-y-1.5"><label className="text-[10px] font-bold text-text-secondary uppercase tracking-wider ml-1">Consumo Atual (R$)</label><input type="text" className="w-full bg-surface-hover border border-border rounded-xl px-4 py-3 outline-none focus:border-primary transition-all text-sm font-bold shadow-inner" value={newContractData.consumption} onChange={(e) => setNewContractData({ ...newContractData, consumption: processCurrencyInput(e.target.value) })} /></div>
                 </div>
@@ -511,7 +538,12 @@ export const Modals = ({
                               </div>
                               <div className="text-right">
                                 <span className="text-xs font-bold text-rose-500">{c.invoiceValue}</span>
-                                <p className="text-[8px] font-black uppercase tracking-widest text-text-secondary">{c.status}</p>
+                                <p className="text-[8px] font-black uppercase tracking-widest text-text-secondary">
+                                  {c.status === 'concluido' ? 'Concluído' : 
+                                   c.status === 'em_analise' ? 'Em Análise' : 
+                                   c.status === 'atencao' ? 'Atenção' : 
+                                   c.status === 'pendente' ? 'Pendente' : c.status}
+                                </p>
                               </div>
                             </div>
                           ))
@@ -1685,8 +1717,10 @@ export const Modals = ({
                     {selectedChecklist.items?.map((item, idx) => (
                       <div 
                         key={`detail-check-item-${item.id || idx}`} 
+                        onClick={() => canEdit && handleToggleChecklistItem(selectedChecklist.id, item.id)}
                         className={cn(
                           "flex items-center justify-between p-4 rounded-2xl border transition-all",
+                          canEdit ? "cursor-pointer hover:bg-surface-hover/30" : "cursor-default",
                           item.checked 
                             ? "bg-emerald-500/5 border-emerald-500/30 shadow-sm" 
                             : "bg-surface-hover/20 border-border/50 shadow-none"
@@ -1737,7 +1771,7 @@ export const Modals = ({
                             </div>
                             {canDelete && (
                               <button 
-                                onClick={() => handleDeleteConf(conf.id)}
+                                onClick={() => setConfToDelete(conf.id)}
                                 className="p-2 text-text-secondary/60 sm:text-text-secondary/40 hover:text-rose-500 hover:bg-rose-500/10 rounded-lg transition-all opacity-100 sm:opacity-0 sm:group-hover/conf:opacity-100"
                                 title="Excluir Confirmação"
                               >
@@ -2113,10 +2147,11 @@ export const Modals = ({
                     {months.map((m) => (
                       <button
                         key={m}
-                        onClick={() => setSelectedImportMonth(m)}
+                        type="button"
+                        onClick={() => setSelectedImportMonth(m.toLowerCase())}
                         className={cn(
                           "px-4 py-3 rounded-xl text-xs font-black uppercase tracking-widest border transition-all active:scale-95",
-                          selectedImportMonth === m
+                          (selectedImportMonth || '').toLowerCase() === m.toLowerCase()
                             ? "bg-primary text-white border-primary shadow-lg shadow-primary/20"
                             : "bg-surface-hover border-border text-text-secondary hover:border-primary/40"
                         )}
@@ -2129,7 +2164,8 @@ export const Modals = ({
 
                 <div className="flex flex-col gap-3 pt-4">
                   <button
-                    onClick={() => proceedWithImportFuel(selectedImportMonth)}
+                    type="button"
+                    onClick={() => proceedWithImportFuel(selectedImportMonth || months[new Date().getMonth()])}
                     className="w-full py-4 bg-primary text-white rounded-2xl font-black text-xs uppercase tracking-widest hover:bg-primary/90 transition-all shadow-xl shadow-primary/20 flex items-center justify-center gap-2"
                   >
                     <Check size={18} />
@@ -2142,6 +2178,39 @@ export const Modals = ({
                     Cancelar
                   </button>
                 </div>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+      {/* Local Delete Confirmation Modal for Checklist Confirmations */}
+      <AnimatePresence>
+        {confToDelete && (
+          <div className="fixed inset-0 z-[300] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.95, y: 20 }} 
+              animate={{ opacity: 1, scale: 1, y: 0 }} 
+              exit={{ opacity: 0, scale: 0.95, y: 20 }} 
+              className="bg-background w-full max-w-sm relative z-10 text-center p-8 rounded-[32px] shadow-2xl border border-border"
+            >
+              <div className="w-16 h-16 bg-rose-500/10 rounded-full flex items-center justify-center text-rose-500 mx-auto mb-6 shrink-0">
+                <Trash2 size={32} />
+              </div>
+              <h3 className="text-xl font-bold mb-2">Excluir Confirmação</h3>
+              <p className="text-text-secondary text-sm mb-8">Tem certeza que deseja excluir esta confirmação de recebimento? Esta ação não pode ser desfeita.</p>
+              <div className="flex flex-col gap-2">
+                <button 
+                  onClick={() => handleDeleteConf(confToDelete)} 
+                  className="w-full bg-rose-500 hover:bg-rose-600 text-white py-4 rounded-xl font-black uppercase tracking-widest text-xs transition-all shadow-xl shadow-rose-500/20"
+                >
+                  Sim, Excluir
+                </button>
+                <button 
+                  onClick={() => setConfToDelete(null)} 
+                  className="w-full py-4 rounded-xl font-black uppercase tracking-widest text-xs text-text-secondary hover:bg-surface-hover transition-all"
+                >
+                  Cancelar
+                </button>
               </div>
             </motion.div>
           </div>

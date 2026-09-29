@@ -15,7 +15,9 @@ import {
   Clock,
   RefreshCw,
   Trash2,
-  X
+  X,
+  ChevronDown,
+  Search
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import jsPDF from 'jspdf';
@@ -38,12 +40,15 @@ const CAN_RECEIVE_ROLES = ['superadmin', 'admin', 'gestor'];
 type PeriodType = 'hoje' | 'semana' | 'mes' | 'custom';
 
 export default function NotasFiscais({ currentUser, addNotification }: NotasFiscaisProps) {
-  const [activeTab, setActiveTab] = useState<'enviar' | 'receber' | 'recebidas'>('enviar');
+  const [activeTab, setActiveTab] = useState<'enviar' | 'receber' | 'recebidas'>(
+    currentUser?.role === 'visualizador' ? 'receber' : 'enviar'
+  );
   const [contracts, setContracts] = useState<Contract[]>([]);
   const [notas, setNotas] = useState<NotaFiscal[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [notaToDelete, setNotaToDelete] = useState<{id: string, numero: string} | null>(null);
 
   // Estados para o filtro de período do relatório
   const [showPeriodSelector, setShowPeriodSelector] = useState(false);
@@ -61,6 +66,8 @@ export default function NotasFiscais({ currentUser, addNotification }: NotasFisc
   });
 
   const [isAvulso, setIsAvulso] = useState(false);
+  const [expandedDays, setExpandedDays] = useState<string[]>([]);
+  const [receivedDateFilter, setReceivedDateFilter] = useState('');
 
   // Verifica se o usuário pode confirmar/excluir
   const canReceive = currentUser?.role ? CAN_RECEIVE_ROLES.includes(currentUser.role) : false;
@@ -132,12 +139,12 @@ export default function NotasFiscais({ currentUser, addNotification }: NotasFisc
       if (dateString.match(/^\d{4}-\d{2}-\d{2}$/)) {
         const [year, month, day] = dateString.split('-').map(Number);
         const date = new Date(year, month - 1, day);
-        return format(date, formatStr);
+        return format(date, formatStr, { locale: ptBR });
       }
       // Se for ISO com tempo
       const date = parseISO(dateString);
       if (isNaN(date.getTime())) return '-';
-      return format(date, formatStr);
+      return format(date, formatStr, { locale: ptBR });
     } catch {
       return '-';
     }
@@ -212,10 +219,10 @@ export default function NotasFiscais({ currentUser, addNotification }: NotasFisc
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!currentUser?.prefeituraId) { alert('Erro: Prefeitura não configurada'); return; }
-    if (!formData.numero_nota || !formData.valor) { alert('Por favor, preencha número da nota e valor'); return; }
-    if (!isAvulso && !formData.contrato_id) { alert('Selecione um contrato ou use lançamento avulso'); return; }
-    if (isAvulso && !formData.fornecedor) { alert('Preencha o nome do fornecedor'); return; }
+    if (!currentUser?.prefeituraId) { if (addNotification) addNotification('Erro', 'Prefeitura não configurada', 'error'); return; }
+    if (!formData.numero_nota || !formData.valor) { if (addNotification) addNotification('Aviso', 'Por favor, preencha número da nota e valor', 'warning'); return; }
+    if (!isAvulso && !formData.contrato_id) { if (addNotification) addNotification('Aviso', 'Selecione um contrato ou use lançamento avulso', 'warning'); return; }
+    if (isAvulso && !formData.fornecedor) { if (addNotification) addNotification('Aviso', 'Preencha o nome do fornecedor', 'warning'); return; }
 
     setSaving(true);
     try {
@@ -237,7 +244,6 @@ export default function NotasFiscais({ currentUser, addNotification }: NotasFisc
       if (error) throw new Error(error.message || 'Erro ao salvar no banco');
 
       if (addNotification) addNotification("Sucesso", "Nota fiscal enviada!", "success");
-      else alert('Nota salva com sucesso!');
 
       setFormData({ numero_nota: '', fornecedor: '', valor: '', data_emissao: format(new Date(), 'yyyy-MM-dd'), contrato_id: '', observacao: '' });
       setIsAvulso(false);
@@ -246,7 +252,6 @@ export default function NotasFiscais({ currentUser, addNotification }: NotasFisc
     } catch (error: any) {
       console.error('Erro ao enviar:', error);
       if (addNotification) addNotification("Erro", `Falha ao salvar: ${error?.message || 'Erro desconhecido'}`, "error");
-      else alert(`Erro: ${error?.message}`);
     } finally {
       setSaving(false);
     }
@@ -262,18 +267,15 @@ export default function NotasFiscais({ currentUser, addNotification }: NotasFisc
         .eq('prefeituraId', currentUser.prefeituraId);
       if (error) throw error;
       if (addNotification) addNotification("Sucesso", "Recebimento confirmado!", "success");
-      else alert('Recebimento confirmado!');
       await fetchNotas();
     } catch (error: any) {
       console.error('Erro ao confirmar:', error);
-      alert(`Erro: ${error?.message || 'Erro desconhecido'}`);
+      if (addNotification) addNotification("Erro", `Falha ao confirmar: ${error?.message || 'Erro desconhecido'}`, "error");
     }
   };
 
   const handleDelete = async (notaId: string, numeroNota: string) => {
     if (!currentUser || !canReceive) return;
-    if (!window.confirm(`Excluir a nota ${numeroNota}? Esta ação não pode ser desfeita.`)) return;
-
     setDeletingId(notaId);
     try {
       const { error } = await supabase
@@ -283,13 +285,13 @@ export default function NotasFiscais({ currentUser, addNotification }: NotasFisc
         .eq('prefeituraId', currentUser.prefeituraId);
       if (error) throw error;
       if (addNotification) addNotification("Sucesso", "Nota excluída com sucesso!", "success");
-      else alert('Nota excluída!');
       await fetchNotas();
     } catch (error: any) {
       console.error('Erro ao excluir:', error);
       if (addNotification) addNotification("Erro", `Falha ao excluir: ${error?.message}`, "error");
     } finally {
       setDeletingId(null);
+      setNotaToDelete(null);
     }
   };
 
@@ -393,6 +395,12 @@ export default function NotasFiscais({ currentUser, addNotification }: NotasFisc
     }
   };
 
+  const toggleDay = (day: string) => {
+    setExpandedDays(prev => 
+      prev.includes(day) ? prev.filter(d => d !== day) : [...prev, day]
+    );
+  };
+
   return (
     <div className="flex flex-col h-full overflow-hidden bg-background">
       <header className="flex flex-col gap-4 p-6 lg:p-8 shrink-0">
@@ -426,22 +434,22 @@ export default function NotasFiscais({ currentUser, addNotification }: NotasFisc
         </div>
 
         <div className="flex items-center p-1 bg-surface border border-border/40 rounded-2xl w-fit">
-          <button
-            onClick={() => setActiveTab('enviar')}
-            className={cn("flex items-center gap-2 px-6 py-2.5 rounded-xl font-black text-sm transition-all", activeTab === 'enviar' ? "bg-primary text-white shadow-md shadow-primary/20" : "text-text-secondary hover:text-text-primary")}
-          >
-            <Send size={16} />
-            Enviar
-          </button>
-          {canReceive && (
+          {currentUser?.role !== 'visualizador' && (
             <button
-              onClick={() => setActiveTab('receber')}
-              className={cn("flex items-center gap-2 px-6 py-2.5 rounded-xl font-black text-sm transition-all", activeTab === 'receber' ? "bg-primary text-white shadow-md shadow-primary/20" : "text-text-secondary hover:text-text-primary")}
+              onClick={() => setActiveTab('enviar')}
+              className={cn("flex items-center gap-2 px-6 py-2.5 rounded-xl font-black text-sm transition-all", activeTab === 'enviar' ? "bg-primary text-white shadow-md shadow-primary/20" : "text-text-secondary hover:text-text-primary")}
             >
-              <CheckCircle size={16} />
-              Receber
+              <Send size={16} />
+              Enviar
             </button>
           )}
+          <button
+            onClick={() => setActiveTab('receber')}
+            className={cn("flex items-center gap-2 px-6 py-2.5 rounded-xl font-black text-sm transition-all", activeTab === 'receber' ? "bg-primary text-white shadow-md shadow-primary/20" : "text-text-secondary hover:text-text-primary")}
+          >
+            <CheckCircle size={16} />
+            Receber
+          </button>
           <button
             onClick={() => setActiveTab('recebidas')}
             className={cn("flex items-center gap-2 px-6 py-2.5 rounded-xl font-black text-sm transition-all", activeTab === 'recebidas' ? "bg-primary text-white shadow-md shadow-primary/20" : "text-text-secondary hover:text-text-primary")}
@@ -628,7 +636,7 @@ export default function NotasFiscais({ currentUser, addNotification }: NotasFisc
             </motion.div>
           )}
 
-          {activeTab === 'receber' && canReceive && (
+          {activeTab === 'receber' && (
             <motion.div key="receber" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }}>
               {loading ? (
                 <div className="flex justify-center py-20">
@@ -650,64 +658,9 @@ export default function NotasFiscais({ currentUser, addNotification }: NotasFisc
                         </div>
                         <div className="flex items-center gap-2">
                           <span className="text-[10px] font-black bg-amber-500/10 text-amber-500 px-3 py-1 rounded-full">PENDENTE</span>
-                          <button
-                            onClick={() => handleDelete(nota.id, nota.numero_nota)}
-                            disabled={deletingId === nota.id}
-                            className="w-8 h-8 flex items-center justify-center bg-rose-500/10 text-rose-500 rounded-xl hover:bg-rose-500/20 transition-all"
-                            title="Excluir nota"
-                          >
-                            {deletingId === nota.id ? <div className="w-4 h-4 border-2 border-rose-500/30 border-t-rose-500 rounded-full animate-spin" /> : <Trash2 size={14} />}
-                          </button>
-                        </div>
-                      </div>
-
-                      <h3 className="text-lg font-black text-text-primary mb-1">Nota: {nota.numero_nota}</h3>
-                      <p className="text-sm text-text-secondary font-bold mb-4">{nota.fornecedor}</p>
-
-                      <div className="grid grid-cols-2 gap-4 mb-6">
-                        <div className="bg-background rounded-2xl p-3">
-                          <p className="text-[10px] font-black text-text-secondary mb-1">VALOR</p>
-                          <p className="text-sm font-black text-primary">{new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(Number(nota.valor))}</p>
-                        </div>
-                        <div className="bg-background rounded-2xl p-3">
-                          <p className="text-[10px] font-black text-text-secondary mb-1">DATA</p>
-                          <p className="text-sm font-black text-text-primary">{formatLocalDate(nota.data_emissao)}</p>
-                        </div>
-                      </div>
-
-                      <div className="text-[10px] text-text-secondary font-bold mb-6 space-y-1">
-                        <div className="flex items-center gap-1.5"><User size={12} /><span>{nota.enviado_por}</span></div>
-                        <div className="flex items-center gap-1.5"><Clock size={12} /><span>{nota.enviado_em ? format(parseISO(nota.enviado_em), "dd/MM HH:mm") : '-'}</span></div>
-                      </div>
-
-                      <button onClick={() => handleConfirmReceipt(nota.id)} className="w-full bg-emerald-500 hover:bg-emerald-600 text-white rounded-2xl py-3.5 font-black flex items-center justify-center gap-2 shadow-lg shadow-emerald-500/20">
-                        <Check size={18} />
-                        Confirmar Recebimento
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </motion.div>
-          )}
-
-          {activeTab === 'recebidas' && (
-            <motion.div key="recebidas" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }}>
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {notas.filter(n => n.status === 'recebido').length === 0 ? (
-                  <div className="col-span-full text-center py-20 text-text-secondary">Nenhuma nota recebida ainda</div>
-                ) : (
-                  notas.filter(n => n.status === 'recebido').map(nota => (
-                    <div key={nota.id} className="bg-surface/50 border border-border/40 rounded-3xl p-6 opacity-80">
-                      <div className="flex justify-between mb-4">
-                        <div className="w-12 h-12 bg-emerald-500/10 text-emerald-500 rounded-2xl flex items-center justify-center">
-                          <CheckCircle size={24} />
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <span className="text-[10px] font-black bg-emerald-500/10 text-emerald-500 px-3 py-1 rounded-full">RECEBIDO</span>
                           {canReceive && (
                             <button
-                              onClick={() => handleDelete(nota.id, nota.numero_nota)}
+                              onClick={() => setNotaToDelete({id: nota.id, numero: nota.numero_nota})}
                               disabled={deletingId === nota.id}
                               className="w-8 h-8 flex items-center justify-center bg-rose-500/10 text-rose-500 rounded-xl hover:bg-rose-500/20 transition-all"
                               title="Excluir nota"
@@ -732,18 +685,197 @@ export default function NotasFiscais({ currentUser, addNotification }: NotasFisc
                         </div>
                       </div>
 
-                      <div className="text-[10px] text-text-secondary font-bold space-y-1">
-                        <div className="flex items-center gap-1.5"><User size={12} /><span>Enviado: {nota.enviado_por} ({nota.enviado_em ? format(parseISO(nota.enviado_em), "dd/MM HH:mm") : '-'})</span></div>
-                        <div className="flex items-center gap-1.5"><Check size={12} className="text-emerald-500" /><span>Recebido: {nota.recebido_por} ({nota.recebido_em ? format(parseISO(nota.recebido_em), "dd/MM HH:mm") : '-'})</span></div>
+                      <div className="text-[10px] text-text-secondary font-bold mb-6 space-y-1">
+                        <div className="flex items-center gap-1.5"><User size={12} /><span>{nota.enviado_por}</span></div>
+                        <div className="flex items-center gap-1.5"><Clock size={12} /><span>{nota.enviado_em ? format(parseISO(nota.enviado_em), "dd/MM HH:mm") : '-'}</span></div>
                       </div>
+
+                      {canReceive && (
+                        <button onClick={() => handleConfirmReceipt(nota.id)} className="w-full bg-emerald-500 hover:bg-emerald-600 text-white rounded-2xl py-3.5 font-black flex items-center justify-center gap-2 shadow-lg shadow-emerald-500/20">
+                          <Check size={18} />
+                          Confirmar Recebimento
+                        </button>
+                      )}
                     </div>
-                  ))
-                )}
+                  ))}
+                </div>
+              )}
+            </motion.div>
+          )}
+
+          {activeTab === 'recebidas' && (
+            <motion.div key="recebidas" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }}>
+              <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8">
+                <div className="relative flex-1 max-w-md">
+                  <Calendar className="absolute left-4 top-1/2 -translate-y-1/2 text-text-secondary" size={18} />
+                  <input
+                    type="date"
+                    value={receivedDateFilter}
+                    onChange={e => setReceivedDateFilter(e.target.value)}
+                    className="w-full bg-surface border border-border/40 rounded-2xl pl-12 pr-4 py-3 text-sm font-bold focus:border-primary outline-none"
+                  />
+                  {receivedDateFilter && (
+                    <button 
+                      onClick={() => setReceivedDateFilter('')}
+                      className="absolute right-4 top-1/2 -translate-y-1/2 text-text-secondary hover:text-rose-500"
+                    >
+                      <X size={16} />
+                    </button>
+                  )}
+                </div>
+                <div className="text-xs font-black text-text-secondary uppercase tracking-widest">
+                  Filtrar por dia de recebimento
+                </div>
               </div>
+
+              {notas.filter(n => n.status === 'recebido').length === 0 ? (
+                <div className="text-center py-20 text-text-secondary">Nenhuma nota recebida ainda</div>
+              ) : (
+                <div className="space-y-4">
+                  {Object.entries(
+                    notas.filter(n => {
+                      const isReceived = n.status === 'recebido';
+                      if (!isReceived) return false;
+                      if (!receivedDateFilter) return true;
+                      return n.recebido_em && extractDateOnly(n.recebido_em) === receivedDateFilter;
+                    }).reduce((acc: { [key: string]: NotaFiscal[] }, nota) => {
+                      const dateKey = nota.recebido_em ? extractDateOnly(nota.recebido_em) : 'Sem Data';
+                      if (!acc[dateKey]) acc[dateKey] = [];
+                      acc[dateKey].push(nota);
+                      return acc;
+                    }, {})
+                  )
+                  .sort((a, b) => b[0].localeCompare(a[0]))
+                  .map(([date, groupNotas]: [string, NotaFiscal[]]) => {
+                    const isExpanded = expandedDays.includes(date) || receivedDateFilter !== '';
+                    return (
+                      <div key={date} className="bg-surface/30 border border-border/40 rounded-3xl overflow-hidden transition-all">
+                        <button 
+                          onClick={() => toggleDay(date)}
+                          className="w-full flex items-center justify-between px-6 py-4 hover:bg-surface/50 transition-all text-left"
+                        >
+                          <div className="flex items-center gap-4">
+                            <div className="w-10 h-10 rounded-xl bg-emerald-500/10 flex items-center justify-center text-emerald-500">
+                              <Calendar size={20} />
+                            </div>
+                            <div>
+                              <h3 className="text-sm font-black text-text-primary uppercase tracking-widest">
+                                {date === 'Sem Data' ? 'Sem Data' : formatLocalDate(date, "EEEE, dd 'de' MMMM 'de' yyyy")}
+                              </h3>
+                              <span className="text-[10px] font-black text-text-secondary uppercase">
+                                {groupNotas.length} {groupNotas.length === 1 ? 'nota registrada' : 'notas registradas'}
+                              </span>
+                            </div>
+                          </div>
+                          <ChevronDown size={20} className={cn("text-text-secondary transition-transform duration-300", isExpanded && "rotate-180")} />
+                        </button>
+                        
+                        <AnimatePresence>
+                          {isExpanded && (
+                            <motion.div 
+                              initial={{ height: 0, opacity: 0 }}
+                              animate={{ height: 'auto', opacity: 1 }}
+                              exit={{ height: 0, opacity: 0 }}
+                              className="overflow-hidden"
+                            >
+                              <div className="p-6 pt-0 border-t border-border/10 mt-4">
+                                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                                  {groupNotas.map(nota => (
+                                    <div key={nota.id} className="bg-surface border border-border/40 rounded-3xl p-6 shadow-sm hover:shadow-md transition-all">
+                                      <div className="flex justify-between mb-4">
+                                        <div className="w-12 h-12 bg-emerald-500/10 text-emerald-500 rounded-2xl flex items-center justify-center">
+                                          <CheckCircle size={24} />
+                                        </div>
+                                        <div className="flex items-center gap-2">
+                                          <span className="text-[10px] font-black bg-emerald-500/10 text-emerald-500 px-3 py-1 rounded-full">RECEBIDO</span>
+                                          {canReceive && (
+                                            <button
+                                              onClick={() => setNotaToDelete({id: nota.id, numero: nota.numero_nota})}
+                                              disabled={deletingId === nota.id}
+                                              className="w-8 h-8 flex items-center justify-center bg-rose-500/10 text-rose-500 rounded-xl hover:bg-rose-500/20 transition-all"
+                                              title="Excluir nota"
+                                            >
+                                              {deletingId === nota.id ? <div className="w-4 h-4 border-2 border-rose-500/30 border-t-rose-500 rounded-full animate-spin" /> : <Trash2 size={14} />}
+                                            </button>
+                                          )}
+                                        </div>
+                                      </div>
+
+                                      <h3 className="text-lg font-black text-text-primary mb-1">Nota: {nota.numero_nota}</h3>
+                                      <p className="text-sm text-text-secondary font-bold mb-4">{nota.fornecedor}</p>
+
+                                      <div className="grid grid-cols-2 gap-4 mb-6">
+                                        <div className="bg-background rounded-2xl p-3">
+                                          <p className="text-[10px] font-black text-text-secondary mb-1">VALOR</p>
+                                          <p className="text-sm font-black text-primary">{new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(Number(nota.valor))}</p>
+                                        </div>
+                                        <div className="bg-background rounded-2xl p-3">
+                                          <p className="text-[10px] font-black text-text-secondary mb-1">DATA</p>
+                                          <p className="text-sm font-black text-text-primary">{formatLocalDate(nota.data_emissao)}</p>
+                                        </div>
+                                      </div>
+
+                                      <div className="text-[10px] text-text-secondary font-bold space-y-1">
+                                        <div className="flex items-center gap-1.5"><User size={12} /><span>Enviado: {nota.enviado_por} ({nota.enviado_em ? format(parseISO(nota.enviado_em), "dd/MM HH:mm") : '-'})</span></div>
+                                        <div className="flex items-center gap-1.5"><Check size={12} className="text-emerald-500" /><span>Recebido: {nota.recebido_por} ({nota.recebido_em ? format(parseISO(nota.recebido_em), "dd/MM HH:mm") : '-'})</span></div>
+                                      </div>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            </motion.div>
+                          )}
+                        </AnimatePresence>
+                      </div>
+                    );
+                  })}
+                  {receivedDateFilter && Object.keys(notas.filter(n => {
+                    const isReceived = n.status === 'recebido';
+                    if (!isReceived) return false;
+                    return n.recebido_em && extractDateOnly(n.recebido_em) === receivedDateFilter;
+                  })).length === 0 && (
+                    <div className="text-center py-20 text-text-secondary">Nenhuma nota recebida neste dia.</div>
+                  )}
+                </div>
+              )}
             </motion.div>
           )}
         </AnimatePresence>
       </main>
+
+      {/* Local Delete Confirmation Modal */}
+      <AnimatePresence>
+        {notaToDelete && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.95, y: 20 }} 
+              animate={{ opacity: 1, scale: 1, y: 0 }} 
+              exit={{ opacity: 0, scale: 0.95, y: 20 }} 
+              className="bg-background w-full max-w-sm relative z-10 text-center p-8 rounded-[32px] shadow-2xl border border-border"
+            >
+              <div className="w-16 h-16 bg-rose-500/10 rounded-full flex items-center justify-center text-rose-500 mx-auto mb-6 shrink-0">
+                <Trash2 size={32} />
+              </div>
+              <h3 className="text-xl font-bold mb-2">Excluir Nota Fiscal</h3>
+              <p className="text-text-secondary text-sm mb-8">Tem certeza que deseja apagar a nota {notaToDelete.numero}? Esta ação não pode ser desfeita.</p>
+              <div className="flex flex-col gap-2">
+                <button 
+                  onClick={() => handleDelete(notaToDelete.id, notaToDelete.numero)} 
+                  className="w-full bg-rose-500 hover:bg-rose-600 text-white py-4 rounded-xl font-black uppercase tracking-widest text-xs transition-all shadow-xl shadow-rose-500/20"
+                >
+                  Confirmar Exclusão
+                </button>
+                <button 
+                  onClick={() => setNotaToDelete(null)} 
+                  className="w-full py-4 rounded-xl font-black uppercase tracking-widest text-xs text-text-secondary hover:bg-surface-hover transition-all"
+                >
+                  Cancelar
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

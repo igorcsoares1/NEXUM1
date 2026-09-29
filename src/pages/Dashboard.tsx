@@ -7,7 +7,8 @@ import {
   TrendingUp,
   ClipboardCheck,
   BarChart3,
-  Clock
+  Clock,
+  RefreshCw
 } from 'lucide-react';
 import {
   AreaChart,
@@ -25,7 +26,7 @@ import { format, differenceInDays, parseISO } from 'date-fns';
 import { StatCard } from '../components/ui/StatCard';
 import { cn } from '../lib/utils';
 import { User, FuelRecord, DailyRecord, Contract, ChecklistItem, AuditItem, View, SystemSettings } from '../types';
-import { parseCurrencyToNumber } from '../utils/format';
+import { parseCurrencyToNumber, safeGetDaysRemaining } from '../utils/format';
 import { generateAuditLogsPDF } from '../utils/pdf';
 
 interface DashboardProps {
@@ -46,6 +47,8 @@ interface DashboardProps {
   auditItems: AuditItem[];
   addNotification: (title: string, message: string, type?: 'success' | 'error' | 'info' | 'warning') => void;
   systemSettings: SystemSettings;
+  onRefresh?: () => void;
+  isRefreshing?: boolean;
 }
 
 const Dashboard = ({
@@ -65,7 +68,9 @@ const Dashboard = ({
   chartData,
   auditItems,
   addNotification,
-  systemSettings
+  systemSettings,
+  onRefresh,
+  isRefreshing = false
 }: DashboardProps) => {
   const totalFuelCost = fuelRecords.reduce((acc, record) => {
     const cost = parseCurrencyToNumber(record.cost);
@@ -94,7 +99,7 @@ const Dashboard = ({
     : 0;
 
   const criticalContracts = contracts.filter(c => {
-    const days = differenceInDays(parseISO(c.expiryDate), new Date());
+    const days = safeGetDaysRemaining(c.expiryDate);
     return days >= 0 && days <= 7;
   });
 
@@ -119,9 +124,20 @@ const Dashboard = ({
 
         {/* ── MOBILE/TABLET DASHBOARD ───────────────────────── */}
         <div className="flex flex-col lg:hidden p-4 sm:p-6 md:p-8 space-y-6">
-          <header className="px-1">
-            <h1 className="text-2xl sm:text-3xl font-black tracking-tight">Dashboard Operacional</h1>
-            <p className="text-text-secondary text-xs sm:text-sm font-medium mt-1">Gestão e indicadores municipais.</p>
+          <header className="px-1 flex justify-between items-start">
+            <div>
+              <h1 className="text-2xl sm:text-3xl font-black tracking-tight">Dashboard Operacional</h1>
+              <p className="text-text-secondary text-xs sm:text-sm font-medium mt-1">Gestão e indicadores municipais.</p>
+            </div>
+            {onRefresh && (
+              <button 
+                onClick={onRefresh}
+                disabled={isRefreshing}
+                className="p-2 bg-surface border border-border/40 rounded-xl text-text-primary active:scale-95 transition-all shadow-sm disabled:opacity-50"
+              >
+                <RefreshCw size={18} className={cn(isRefreshing && "animate-spin")} />
+              </button>
+            )}
           </header>
 
           {criticalContracts.length > 0 && (
@@ -257,10 +273,22 @@ const Dashboard = ({
         <div className="hidden lg:flex flex-col p-8 space-y-8 max-w-[1600px] mx-auto w-full">
           <header className="flex justify-between items-end">
             <div>
-              <h1 className="text-4xl font-black tracking-tighter">Dashboard Operacional</h1>
+              <div className="flex items-center gap-3">
+                <h1 className="text-4xl font-black tracking-tighter">Dashboard Operacional</h1>
+                {onRefresh && (
+                  <button 
+                    onClick={onRefresh}
+                    disabled={isRefreshing}
+                    className="p-2.5 bg-surface border border-border hover:bg-surface-hover rounded-2xl text-text-primary active:scale-95 transition-all shadow-sm disabled:opacity-50 group mt-1"
+                    title="Atualizar Dados"
+                  >
+                    <RefreshCw size={20} className={cn("text-text-secondary group-hover:text-primary transition-colors", isRefreshing && "animate-spin")} />
+                  </button>
+                )}
+              </div>
               <p className="text-text-secondary font-medium text-lg">Central de monitoramento e indicadores de gestão municipal.</p>
             </div>
-            {currentUser?.role !== 'visualizador' && (
+            {currentUser && (
               <div className="flex items-center gap-3">
                  <button onClick={handleExportLogs} className="px-5 py-2.5 rounded-xl font-black uppercase text-[10px] tracking-widest bg-surface border border-border hover:bg-surface-hover transition-all active:scale-95 shadow-sm">
                     Exportar Logs
@@ -393,7 +421,7 @@ const Dashboard = ({
               </div>
               <h4 className="text-2xl font-black tracking-tighter mb-3">Relatórios Dinâmicos</h4>
               <p className="text-text-secondary font-medium mb-8 max-w-lg mx-auto">Acesse análises customizadas e exporte dados para apresentações em PDF ou Excel.</p>
-              {currentUser?.role !== 'visualizador' && (
+              {currentUser && (
                 <button onClick={() => setActiveView('relatorios')} className="max-w-xs w-full py-4 rounded-2xl font-black uppercase tracking-widest text-xs btn-primary shadow-lg shadow-primary/20">Ir para Relatórios</button>
               )}
             </div>

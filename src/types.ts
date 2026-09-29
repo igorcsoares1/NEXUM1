@@ -215,11 +215,13 @@ export interface Vehicle {
   placa: string;
   ano: string;
   cor?: string;
+  tipo_veiculo?: string;
   combustivel?: string;
   renavam?: string;
   chassi?: string;
   secretaria: string;
   km_atual: string;
+  km_proxima_revisao?: string;
   status: 'em_dia' | 'parado' | 'manutencao' | 'em_uso';
   tipo_propriedade: 'oficial' | 'locado';
   contrato_id?: string;
@@ -231,11 +233,12 @@ export interface VehicleOccurrence {
   id: string;
   frota_id: string;
   prefeituraId: string;
-  tipo: 'quebra' | 'avaria' | 'manutencao_preventiva' | 'retorno';
+  tipo: 'quebra' | 'avaria' | 'manutencao_preventiva' | 'retorno' | 'revisao';
   descricao: string;
   pecas?: string;
   custo?: string;
   km: string;
+  proximo_km?: string;
   status_resultado: 'em_dia' | 'parado' | 'manutencao' | 'em_uso';
   registrado_por: string;
   createdAt: string;

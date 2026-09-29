@@ -122,7 +122,7 @@ export const handleImportFile = async (
               }
             },
             temperature: 0.1,
-          }, "gemini-1.5-flash");
+          }, "gemini-3.8-flash");
 
           return safeJsonParse(text);
         } catch (error: any) {
@@ -452,7 +452,7 @@ async function extractAndSave(
       Texto:
       ${rawData.substring(0, 15000)}
     `;
-      const text = await callAIProxy([{ role: 'user', parts: [{ text: promptText }] }], { responseMimeType: "application/json" }, "gemini-1.5-flash");
+      const text = await callAIProxy([{ role: 'user', parts: [{ text: promptText }] }], { responseMimeType: "application/json" }, "gemini-3.8-flash");
       allExtractedData = safeJsonParse(text);
 
     } else if (file.type === 'application/pdf' || fileName.endsWith('.pdf')) {
@@ -486,7 +486,7 @@ async function extractAndSave(
           { inlineData: { mimeType: "application/pdf", data: chunk.base64 } }
         ];
         
-        const text = await callAIProxy([{ role: 'user', parts }], { responseMimeType: "application/json" }, "gemini-1.5-flash");
+        const text = await callAIProxy([{ role: 'user', parts }], { responseMimeType: "application/json" }, "gemini-3.8-flash");
         
         const extractedChunkData = safeJsonParse(text);
         allExtractedData = [...allExtractedData, ...extractedChunkData];

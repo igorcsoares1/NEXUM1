@@ -142,7 +142,7 @@ export const markReciboAsDeleted = async (reciboIdOrIds: string | string[]): Pro
  * Marca como excluídos todos os recibos associados a um número de processo
  */
 export const markRecibosByProcessNumberAsDeleted = async (processNumber: string): Promise<void> => {
-  if (!processNumber || processNumber === 'N/A') return;
+  if (!processNumber || processNumber === 'N/D') return;
 
   try {
     const { data } = await supabase

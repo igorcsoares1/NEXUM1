@@ -127,7 +127,7 @@ import { handleExportCSV } from './utils/csv';
 import { runSmartHealthCheck, HealthCheckResult } from './services/automation';
 import { handleImportFile, handleImportFuel } from './utils/import';
 import { callAIProxy } from './lib/ai';
-import { processCurrencyInput, parseCurrencyToNumber, formatCurrency } from './utils/format';
+import { processCurrencyInput, parseCurrencyToNumber, formatCurrency, normalizeDateForInput, extractDateFromText, safeParseDate, safeGetDaysRemaining } from './utils/format';
 import { logActivity, fetchLogs, ActivityLog } from './services/logs';
 
 export default function App() {
@@ -171,7 +171,8 @@ export default function App() {
     fetchDailyRecords,
     fetchServidores,
     fetchUsers,
-    fetchChecklists
+    fetchChecklists,
+    fetchProtocols
   } = useSupabase({ isAuthReady, currentUser, isLoggedIn });
 
   const {
@@ -267,8 +268,9 @@ export default function App() {
     // Critical / Expired
     const expiredContracts = contracts.filter(c => {
       try {
-        if (!c.expiryDate) return false;
-        const diff = differenceInDays(parseISO(c.expiryDate), today);
+        const d = safeParseDate(c.expiryDate) || (c.validity ? safeParseDate(extractDateFromText(c.validity)) : null);
+        if (!d) return false;
+        const diff = differenceInDays(d, today);
         return diff < 0;
       } catch (e) { return false; }
     });
@@ -276,8 +278,9 @@ export default function App() {
     // 30 days
     const expiring30 = contracts.filter(c => {
       try {
-        if (!c.expiryDate) return false;
-        const diff = differenceInDays(parseISO(c.expiryDate), today);
+        const d = safeParseDate(c.expiryDate) || (c.validity ? safeParseDate(extractDateFromText(c.validity)) : null);
+        if (!d) return false;
+        const diff = differenceInDays(d, today);
         return diff >= 0 && diff <= 30;
       } catch (e) { return false; }
     });
@@ -285,8 +288,9 @@ export default function App() {
     // 60 days
     const expiring60 = contracts.filter(c => {
       try {
-        if (!c.expiryDate) return false;
-        const diff = differenceInDays(parseISO(c.expiryDate), today);
+        const d = safeParseDate(c.expiryDate) || (c.validity ? safeParseDate(extractDateFromText(c.validity)) : null);
+        if (!d) return false;
+        const diff = differenceInDays(d, today);
         return diff > 30 && diff <= 60;
       } catch (e) { return false; }
     });
@@ -652,8 +656,9 @@ export default function App() {
 
   const baseFilteredContracts = useMemo(() => {
     return contracts.filter(c => {
-      const matchesSearch = c.number.toLowerCase().includes(contractSearch.toLowerCase()) ||
-        c.vendor.toLowerCase().includes(contractSearch.toLowerCase());
+      const search = contractSearch.toLowerCase();
+      const matchesSearch = (c.number || '').toLowerCase().includes(search) ||
+        (c.vendor || '').toLowerCase().includes(search);
 
       const matchesSecretariat = contractFilters.secretariat === 'all' || c.secretariat === contractFilters.secretariat;
       const matchesModality = contractFilters.modality === 'all' || c.modality === contractFilters.modality;
@@ -675,7 +680,7 @@ export default function App() {
 
   const filteredContracts = useMemo(() => {
     return baseFilteredContracts.filter(c => {
-      const expiryDate = c.expiryDate ? parseISO(c.expiryDate) : null;
+      const expiryDate = safeParseDate(c.expiryDate) || (c.validity ? safeParseDate(extractDateFromText(c.validity)) : null);
       const daysRemaining = expiryDate ? differenceInDays(expiryDate, new Date()) : -999;
 
       if (contractFilter === 'vigente') return c.status === 'vigente';
@@ -693,18 +698,36 @@ export default function App() {
     });
   }, [baseFilteredContracts, contractFilter]);
 
+  const getRecordMonth = (record: FuelRecord): string => {
+    if (record.month && record.month.trim()) {
+      return record.month.trim().toLowerCase();
+    }
+    if (record.date) {
+      try {
+        const parsed = parseISO(record.date);
+        if (!isNaN(parsed.getTime())) {
+          return format(parsed, 'MMMM', { locale: ptBR }).toLowerCase();
+        }
+      } catch {}
+    }
+    return 'sem mês';
+  };
+
   const filteredFuelRecords = useMemo(() => {
     return fuelRecords.filter(record => {
-      const matchesSearch = record.vehicle.toLowerCase().includes(fuelFilters.search.toLowerCase()) ||
-        record.driver.toLowerCase().includes(fuelFilters.search.toLowerCase());
+      const search = (fuelFilters.search || '').toLowerCase();
+      const matchesSearch = (record.vehicle || '').toLowerCase().includes(search) ||
+        (record.driver || '').toLowerCase().includes(search);
       const matchesDate = !fuelFilters.date || record.date === fuelFilters.date;
-      const matchesMonth = !fuelFilters.month || record.month?.toLowerCase() === fuelFilters.month.toLowerCase();
+      
+      const recordMonth = getRecordMonth(record);
+      const matchesMonth = !fuelFilters.month || recordMonth === fuelFilters.month.toLowerCase();
 
-      const quantity = parseFloat((record.quantity || '0').replace(/[^\d.,]/g, '').replace(',', '.'));
+      const quantity = parseFloat((record.quantity || '0').toString().replace(/[^\d.,]/g, '').replace(',', '.'));
       const matchesMinQty = !fuelFilters.minQuantity || quantity >= parseFloat(fuelFilters.minQuantity);
       const matchesMaxQty = !fuelFilters.maxQuantity || quantity <= parseFloat(fuelFilters.maxQuantity);
 
-      const cost = parseFloat((record.cost || '0').replace(/[^\d.,]/g, '').replace(',', '.'));
+      const cost = parseFloat((record.cost || '0').toString().replace(/[^\d.,]/g, '').replace(',', '.'));
       const matchesMinCost = !fuelFilters.minCost || cost >= parseFloat(fuelFilters.minCost);
       const matchesMaxCost = !fuelFilters.maxCost || cost <= parseFloat(fuelFilters.maxCost);
 
@@ -714,33 +737,35 @@ export default function App() {
 
   const filteredUsers = useMemo(() => {
     return users.filter(u =>
-      u.name.toLowerCase().includes(userSearch.toLowerCase()) ||
-      u.email.toLowerCase().includes(userSearch.toLowerCase()) ||
-      u.department.toLowerCase().includes(userSearch.toLowerCase())
+      (u.name || '').toLowerCase().includes(userSearch.toLowerCase()) ||
+      (u.email || '').toLowerCase().includes(userSearch.toLowerCase()) ||
+      (u.department || '').toLowerCase().includes(userSearch.toLowerCase())
     );
   }, [userSearch, users]);
 
   const filteredDailyRecords = useMemo(() => {
+    const search = searchQuery.toLowerCase();
     return dailyRecords.filter(record =>
-      record.driver.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      record.destination.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      (record.purpose && record.purpose.toLowerCase().includes(searchQuery.toLowerCase()))
+      (record.driver || '').toLowerCase().includes(search) ||
+      (record.destination || '').toLowerCase().includes(search) ||
+      (record.purpose && record.purpose.toLowerCase().includes(search))
     );
   }, [dailyRecords, searchQuery]);
 
   const filteredChecklists = useMemo(() => {
+    const search = checklistSearch.toLowerCase();
     return checklistRecords.filter(item => {
       const matchesSearch = 
-        item.contractNumber.toLowerCase().includes(checklistSearch.toLowerCase()) ||
-        item.processNumber.toLowerCase().includes(checklistSearch.toLowerCase()) ||
-        item.vendor.toLowerCase().includes(checklistSearch.toLowerCase()) ||
-        item.object.toLowerCase().includes(checklistSearch.toLowerCase());
+        (item.contractNumber || '').toLowerCase().includes(search) ||
+        (item.processNumber || '').toLowerCase().includes(search) ||
+        (item.vendor || '').toLowerCase().includes(search) ||
+        (item.object || '').toLowerCase().includes(search);
       
       const matchesStatus = !checklistFilters.status || 
         (checklistFilters.status === 'andamento' 
           ? (item.status !== 'concluido' && item.status !== 'pendente') 
           : item.status === checklistFilters.status);
-      const matchesVendor = !checklistFilters.vendor || item.vendor.toLowerCase().includes(checklistFilters.vendor.toLowerCase());
+      const matchesVendor = !checklistFilters.vendor || (item.vendor || '').toLowerCase().includes(checklistFilters.vendor.toLowerCase());
       
       let matchesDate = true;
       if (checklistFilters.startDate && checklistFilters.endDate) {
@@ -802,7 +827,7 @@ export default function App() {
     const file = e.target.files?.[0];
     if (!file) return;
     setPendingImportFile(file);
-    const currentMonth = format(new Date(), 'MMMM', { locale: ptBR });
+    const currentMonth = format(new Date(), 'MMMM', { locale: ptBR }).toLowerCase();
     setSelectedImportMonth(currentMonth);
     setShowImportMonthModal(true);
     // Reset input
@@ -814,77 +839,175 @@ export default function App() {
     const file = pendingImportFile;
     setIsImporting(true);
     setShowImportMonthModal(false);
+
+    const cleanNum = (val: any): number => {
+      if (val === null || val === undefined) return 0;
+      if (typeof val === 'number') return isNaN(val) ? 0 : val;
+      const str = String(val).replace(/R\$\s*/gi, '').replace(/[^\d.,-]/g, '').trim();
+      if (!str) return 0;
+      if (str.includes(',')) {
+        return parseFloat(str.replace(/\./g, '').replace(',', '.')) || 0;
+      }
+      return parseFloat(str) || 0;
+    };
+
+    const extractPlate = (text: string): string => {
+      if (!text) return '';
+      const m1 = text.match(/\(([A-Z0-9-]+)\)/i);
+      if (m1) return m1[1].toUpperCase();
+      const m2 = text.match(/([A-Z]{3}-?[0-9][A-Z0-9][0-9]{2})/i);
+      if (m2) return m2[1].toUpperCase();
+      return '';
+    };
+
     try {
       const XLSX = await import('xlsx');
-      const reader = new FileReader();
-      reader.onload = async (event) => {
-        try {
-          const data = event.target?.result;
-          const workbook = XLSX.read(data, { type: 'binary' });
-          
-          const monthInput = month.toLowerCase();
+      const arrayBuffer = await file.arrayBuffer();
+      const workbook = XLSX.read(arrayBuffer, { type: 'array' });
+      
+      const monthInput = (month || format(new Date(), 'MMMM', { locale: ptBR })).toLowerCase().trim();
+      const records: any[] = [];
+      const today = format(new Date(), 'yyyy-MM-dd');
+      const prefId = currentUser?.prefeituraId || '1';
 
-          const records: any[] = [];
-          const today = format(new Date(), 'yyyy-MM-dd');
+      for (const sheetName of workbook.SheetNames) {
+        if (sheetName.toLowerCase().startsWith('total') && !sheetName.toLowerCase().includes('abastec')) continue;
+        
+        const worksheet = workbook.Sheets[sheetName];
+        const jsonRows: any[] = XLSX.utils.sheet_to_json(worksheet, { defval: "" });
 
-          for (const sheetName of workbook.SheetNames) {
-            if (sheetName.toLowerCase().includes('total')) continue;
-            
-            const worksheet = workbook.Sheets[sheetName];
-            const rows = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
+        if (jsonRows.length > 0) {
+          for (const row of jsonRows) {
+            // Check for Block 1 (standard or custom column names)
+            const veh1 = String(row['VEICULO'] || row['Veículo'] || row['Veiculo'] || row['VEÍCULO'] || row['veiculo'] || '').trim();
+            const lit1 = cleanNum(row['TOTAL LITROS'] || row['Total Litros'] || row['Litros'] || row['LITROS'] || row['Qtd'] || row['QUANTIDADE'] || row['litros']);
+            const pre1 = cleanNum(row['R$/LITRO'] || row['R$ / LITRO'] || row['Unitário'] || row['Preço'] || row['VALOR UNIT'] || row['preco']);
+            const com1 = String(row['COMBUSTIVEL'] || row['Combustível'] || row['Combustivel'] || row['TIPO'] || 'DIESEL').trim();
+            let tot1 = cleanNum(row['R$ TOTAL'] || row['Total R$'] || row['VALOR TOTAL'] || row['Total'] || row['Custo'] || row['custo']);
+            if (tot1 === 0 && lit1 > 0 && pre1 > 0) tot1 = lit1 * pre1;
 
-            for (let i = 1; i < rows.length; i++) {
-              const row = rows[i] as any[];
-              if (!row[0]) continue;
-
-              const vehicle = String(row[0]).trim();
-              if (vehicle.toLowerCase().includes('total') || vehicle.length === 0) continue;
-
-              const liters = Number(row[1]) || 0;
-              const unitPrice = Number(row[2]) || 0;
-              const fuelType = String(row[3] || 'DIESEL').trim();
-              const totalCost = Number(row[4]) || 0;
-
-              if (liters === 0 || unitPrice === 0 || totalCost === 0) continue;
-
+            if (veh1 && lit1 > 0 && !veh1.toLowerCase().includes('total')) {
               records.push({
-                vehicle: vehicle,
+                prefeituraId: prefId,
+                vehicle: veh1,
+                plate: extractPlate(veh1),
                 driver: '',
                 date: today,
-                quantity: liters,
-                cost: totalCost,
+                quantity: lit1.toString(),
+                cost: tot1 > 0 ? 'R$ ' + tot1.toFixed(2) : (pre1 > 0 ? 'R$ ' + (lit1 * pre1).toFixed(2) : '0'),
+                fuelType: com1.toLowerCase().includes('gasolina') ? 'GASOLINA' : (com1.toLowerCase().includes('etanol') ? 'ETANOL' : 'DIESEL'),
+                unitPrice: pre1 > 0 ? 'R$ ' + pre1.toFixed(2) : (tot1 > 0 && lit1 > 0 ? 'R$ ' + (tot1 / lit1).toFixed(2) : ''),
                 status: 'concluido',
-                fuelType: fuelType.toUpperCase(),
-                unitPrice: unitPrice,
-                plate: '',
                 month: monthInput,
-                prefeituraId: currentUser?.prefeituraId || '1'
+                official: '',
+                renavam: '',
+                yearModel: '',
+                kmPerLiter: '',
+                kmReading: '',
+                createdAt: new Date().toISOString()
+              });
+            }
+
+            // Check for Block 2 (side-by-side format in some municipal spreadsheets)
+            const veh2 = String(row['VEICULO .1'] || row['VEICULO.1'] || row['Veículo.1'] || '').trim();
+            const lit2 = cleanNum(row['TOTAL LITROS.1'] || row['TOTAL LITROS .1'] || row['Total Litros.1']);
+            const pre2 = cleanNum(row['R$/LITRO.1'] || row['R$/LITRO .1'] || row['Unitário.1']);
+            const com2 = String(row['COMBUSTIVEL .1'] || row['COMBUSTIVEL.1'] || 'DIESEL').trim();
+            let tot2 = cleanNum(row['R$ TOTAL.1'] || row['R$ TOTAL .1'] || row['Total R$.1']);
+            if (tot2 === 0 && lit2 > 0 && pre2 > 0) tot2 = lit2 * pre2;
+
+            if (veh2 && lit2 > 0 && !veh2.toLowerCase().includes('total')) {
+              records.push({
+                prefeituraId: prefId,
+                vehicle: veh2,
+                plate: extractPlate(veh2),
+                driver: '',
+                date: today,
+                quantity: lit2.toString(),
+                cost: tot2 > 0 ? 'R$ ' + tot2.toFixed(2) : (pre2 > 0 ? 'R$ ' + (lit2 * pre2).toFixed(2) : '0'),
+                fuelType: com2.toLowerCase().includes('gasolina') ? 'GASOLINA' : (com2.toLowerCase().includes('etanol') ? 'ETANOL' : 'DIESEL'),
+                unitPrice: pre2 > 0 ? 'R$ ' + pre2.toFixed(2) : (tot2 > 0 && lit2 > 0 ? 'R$ ' + (tot2 / lit2).toFixed(2) : ''),
+                status: 'concluido',
+                month: monthInput,
+                official: '',
+                renavam: '',
+                yearModel: '',
+                kmPerLiter: '',
+                kmReading: '',
+                createdAt: new Date().toISOString()
               });
             }
           }
-
-          if (records.length === 0) throw new Error('Nenhum registro encontrado');
-
-          const { error } = await supabase.from('fuelRecords').insert(records);
-          if (error) {
-            console.error('Erro Supabase:', error);
-            throw error;
-          }
-
-          await fetchFuelRecords();
-          addNotification('Sucesso', records.length + ' registros importados para o mês de ' + monthInput + '!', 'success');
-        } catch (err: any) {
-          console.error('Erro:', err);
-          addNotification('Erro', err.message || 'Erro ao processar', 'error');
-        } finally {
-          setIsImporting(false);
-          setPendingImportFile(null);
         }
-      };
-      reader.readAsBinaryString(file);
+
+        // Fallback for unstructured sheets or index-based matrices if records is still empty
+        if (records.length === 0) {
+          const rawRows: any[][] = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
+          for (let i = 1; i < rawRows.length; i++) {
+            const r = rawRows[i];
+            if (!r || !r[0]) continue;
+            const veh = String(r[0]).trim();
+            if (veh.toLowerCase().includes('total') || veh.length === 0) continue;
+
+            const lit = cleanNum(r[1]);
+            const pre = cleanNum(r[2]);
+            const com = String(r[3] || 'DIESEL').trim();
+            let tot = cleanNum(r[4]);
+            if (tot === 0 && lit > 0 && pre > 0) tot = lit * pre;
+
+            if (lit > 0) {
+              records.push({
+                prefeituraId: prefId,
+                vehicle: veh,
+                plate: extractPlate(veh),
+                driver: '',
+                date: today,
+                quantity: lit.toString(),
+                cost: tot > 0 ? 'R$ ' + tot.toFixed(2) : '0',
+                fuelType: com.toLowerCase().includes('gasolina') ? 'GASOLINA' : 'DIESEL',
+                unitPrice: pre > 0 ? 'R$ ' + pre.toFixed(2) : '',
+                status: 'concluido',
+                month: monthInput,
+                official: '',
+                renavam: '',
+                yearModel: '',
+                kmPerLiter: '',
+                kmReading: '',
+                createdAt: new Date().toISOString()
+              });
+            }
+          }
+        }
+      }
+
+      if (records.length === 0) {
+        throw new Error('Nenhum registro válido de combustível foi identificado na planilha. Verifique se as colunas contêm Veículo e Litros.');
+      }
+
+      // Insert in chunks of 50 to prevent payload timeout errors
+      const chunkSize = 50;
+      for (let i = 0; i < records.length; i += chunkSize) {
+        const chunk = records.slice(i, i + chunkSize);
+        const { error } = await supabase.from('fuelRecords').insert(chunk);
+        if (error) {
+          console.error('Erro ao inserir registros de combustível:', error);
+          throw error;
+        }
+      }
+
+      await fetchFuelRecords();
+      addNotification('Sucesso', `${records.length} abastecimentos importados com sucesso para o mês de ${monthInput}!`, 'success');
+      logActivity(
+        currentUser,
+        'Importação de Combustível',
+        `Importou ${records.length} registros para o mês de ${monthInput}`
+      );
     } catch (err: any) {
+      console.error('Erro na importação de combustível:', err);
+      addNotification('Erro na Importação', err.message || 'Falha ao processar arquivo.', 'error');
+    } finally {
       setIsImporting(false);
-      addNotification('Erro', err.message || 'Erro na importação', 'error');
+      setPendingImportFile(null);
     }
   };
 
@@ -893,18 +1016,28 @@ export default function App() {
   const canDelete = isGestor;
 
   const handleApproveDaily = async (record: DailyRecord) => {
+    if (!isAdmin) {
+      addNotification('Erro', 'Você não tem permissão para aprovar diárias.', 'error');
+      return;
+    }
     await dailyService.handleApproveDaily(record, currentUser!, addNotification);
     logActivity(currentUser, 'Aprovação de Diária', `Aprovou diária de ${record.driver} para ${record.destination}`);
   };
 
   const handleRejectDaily = async (record: DailyRecord) => {
+    if (!isAdmin) {
+      addNotification('Erro', 'Você não tem permissão para rejeitar diárias.', 'error');
+      return;
+    }
     await dailyService.handleRejectDaily(record, currentUser!, addNotification);
     logActivity(currentUser, 'Rejeição de Diária', `Rejeitou diária de ${record.driver} para ${record.destination}`);
   };
 
   const criticalContracts = useMemo(() =>
     contracts.filter(c => {
-      const daysRemaining = differenceInDays(parseISO(c.expiryDate), new Date());
+      const d = safeParseDate(c.expiryDate) || (c.validity ? safeParseDate(extractDateFromText(c.validity)) : null);
+      if (!d) return false;
+      const daysRemaining = differenceInDays(d, new Date());
       return daysRemaining <= 7;
     }),
     [contracts]);
@@ -1027,6 +1160,10 @@ export default function App() {
 
   const handleSaveChecklist = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
+    if (!isGestor) {
+      addNotification('Erro', 'Você não tem permissão para salvar processos.', 'error');
+      return;
+    }
     setIsSavingChecklist(true);
     try {
       await checklistService.handleSaveChecklist(
@@ -1134,6 +1271,10 @@ export default function App() {
   };
 
   const handleDeleteChecklist = (id: string) => {
+    if (!isGestor) {
+      addNotification('Erro', 'Você não tem permissão para excluir processos.', 'error');
+      return;
+    }
     checklistService.handleDeleteChecklist(
       id,
       setItemToDelete,
@@ -1153,6 +1294,10 @@ export default function App() {
 
   const handleSaveUser = (e?: React.FormEvent) => {
     if (e) e.preventDefault();
+    if (currentUser?.role !== 'admin' && currentUser?.role !== 'superadmin') {
+      addNotification('Erro', 'Você não tem permissão para gerenciar usuários.', 'error');
+      return;
+    }
     userService.handleSaveUser(
       newUserData,
       editingUser,
@@ -1172,6 +1317,10 @@ export default function App() {
   };
 
   const handleDeleteUser = (id: string) => {
+    if (currentUser?.role !== 'admin' && currentUser?.role !== 'superadmin') {
+      addNotification('Erro', 'Você não tem permissão para excluir usuários.', 'error');
+      return;
+    }
     userService.handleDeleteUser(
       id,
       setItemToDelete,
@@ -1196,6 +1345,10 @@ export default function App() {
   const handleSaveServidor = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!currentUser) return;
+    if (!isGestor) {
+      addNotification('Erro', 'Você não tem permissão para salvar servidores.', 'error');
+      return;
+    }
     await servidorService.saveServidor(
       newServidorData,
       editingServidor,
@@ -1214,6 +1367,10 @@ export default function App() {
   };
 
   const handleDeleteServidor = (id: string) => {
+    if (!isGestor) {
+      addNotification('Erro', 'Você não tem permissão para excluir servidores.', 'error');
+      return;
+    }
     setDeleteType('servidor');
     setItemToDelete(id);
     setShowDeleteConfirm(true);
@@ -1221,6 +1378,10 @@ export default function App() {
 
   const handleSaveContract = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
+    if (!isGestor) {
+      addNotification('Erro', 'Você não tem permissão para salvar contratos.', 'error');
+      return;
+    }
     await contractService.handleSaveContract(
       newContractData,
       editingContract,
@@ -1239,6 +1400,10 @@ export default function App() {
   };
 
   const handleDeleteContract = (id: string) => {
+    if (!isGestor) {
+      addNotification('Erro', 'Você não tem permissão para excluir contratos.', 'error');
+      return;
+    }
     contractService.handleDeleteContract(
       id,
       setItemToDelete,
@@ -1262,6 +1427,8 @@ export default function App() {
         if (error) throw error;
         fetchContracts();
         logActivity(currentUser, 'Exclusão de Contrato', `Excluiu contrato ID: ${itemToDelete}`);
+      } else if (deleteType === 'Protocolo' && itemToDelete) {
+        await handleActualDeleteProtocol(itemToDelete);
       } else if (deleteType === 'fuel' && itemToDelete) {
         const { error } = await supabase.from('fuelRecords').delete().eq('id', itemToDelete);
         if (error) throw error;
@@ -1358,6 +1525,10 @@ export default function App() {
 
   const handleSaveFuel = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
+    if (!isGestor) {
+      addNotification('Erro', 'Você não tem permissão para salvar abastecimentos.', 'error');
+      return;
+    }
     await fuelService.handleSaveFuel(
       newFuelData,
       editingFuel,
@@ -1377,6 +1548,10 @@ export default function App() {
   };
 
   const handleDeleteFuel = (id: string) => {
+    if (!canDelete) {
+      addNotification("Acesso Negado", "Você não possui permissão para excluir registros.", "error");
+      return;
+    }
     fuelService.handleDeleteFuel(
       id,
       setItemToDelete,
@@ -1387,6 +1562,10 @@ export default function App() {
 
   const handleSaveDaily = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
+    if (!isGestor) {
+      addNotification('Erro', 'Você não tem permissão para salvar diárias.', 'error');
+      return;
+    }
     setIsSavingDaily(true);
     try {
       await dailyService.handleSaveDaily(
@@ -1413,6 +1592,10 @@ export default function App() {
   };
 
   const handleDeleteDaily = (id: string) => {
+    if (!canDelete) {
+      addNotification("Acesso Negado", "Você não possui permissão para excluir registros.", "error");
+      return;
+    }
     dailyService.handleDeleteDaily(
       id,
       setItemToDelete,
@@ -1422,21 +1605,30 @@ export default function App() {
   };
 
   const handleEditContract = (contract: Contract) => {
+    if (!canEdit) {
+      addNotification("Acesso Negado", "Você não possui permissão para editar registros.", "error");
+      return;
+    }
     setEditingContract(contract);
+    let resolvedExpiry = normalizeDateForInput(contract.expiryDate);
+    if (!resolvedExpiry && contract.validity) {
+      resolvedExpiry = extractDateFromText(contract.validity);
+    }
+
     setNewContractData({
       prefeituraId: contract.prefeituraId,
       number: contract.number,
       vendor: contract.vendor,
       object: contract.object,
       validity: contract.validity,
-      expiryDate: contract.expiryDate,
+      expiryDate: resolvedExpiry,
       consumption: formatCurrency(parseCurrencyToNumber(contract.consumption)),
       totalValue: formatCurrency(parseCurrencyToNumber(contract.totalValue)),
       isAditivado: !!contract.isAditivado,
       status: contract.status,
       secretariat: contract.secretariat || '',
       modality: contract.modality || '',
-      signatureDate: contract.signatureDate || '',
+      signatureDate: normalizeDateForInput(contract.signatureDate) || '',
       category: contract.category || '',
       addendums: contract.addendums || []
     });
@@ -1444,6 +1636,10 @@ export default function App() {
   };
 
   const handleEditChecklist = (item: ChecklistItem) => {
+    if (!canEdit) {
+      addNotification("Acesso Negado", "Você não possui permissão para editar registros.", "error");
+      return;
+    }
     setEditingChecklist(item);
     setNewChecklistData({
       prefeituraId: item.prefeituraId,
@@ -1461,6 +1657,10 @@ export default function App() {
   };
 
   const handleEditFuel = (record: FuelRecord) => {
+    if (!canEdit) {
+      addNotification("Acesso Negado", "Você não possui permissão para editar registros.", "error");
+      return;
+    }
     setEditingFuel(record);
     setNewFuelData({
       prefeituraId: record.prefeituraId,
@@ -1483,6 +1683,10 @@ export default function App() {
   };
 
   const handleEditDaily = (record: DailyRecord) => {
+    if (!canEdit) {
+      addNotification("Acesso Negado", "Você não possui permissão para editar registros.", "error");
+      return;
+    }
     const servant = servidores.find(s => 
       s.id === record.servidorId || 
       (s.name && (record.beneficiary || record.driver) && s.name.trim().toLowerCase() === (record.beneficiary || record.driver).trim().toLowerCase())
@@ -1561,23 +1765,23 @@ export default function App() {
       total: baseFilteredContracts.length,
       vigente: baseFilteredContracts.filter(c => c.status === 'vigente').length,
       vencido: baseFilteredContracts.filter(c => {
-        const expiryDate = c.expiryDate ? parseISO(c.expiryDate) : null;
+        const expiryDate = safeParseDate(c.expiryDate) || (c.validity ? safeParseDate(extractDateFromText(c.validity)) : null);
         const days = expiryDate ? differenceInDays(expiryDate, new Date()) : -1;
         return c.status === 'vencido' || days < 0;
       }).length,
       aditivado: baseFilteredContracts.filter(c => c.isAditivado).length,
       vencendo30: baseFilteredContracts.filter(c => {
-        const expiryDate = c.expiryDate ? parseISO(c.expiryDate) : null;
+        const expiryDate = safeParseDate(c.expiryDate) || (c.validity ? safeParseDate(extractDateFromText(c.validity)) : null);
         const days = expiryDate ? differenceInDays(expiryDate, new Date()) : -1;
         return days >= 0 && days <= 30;
       }).length,
       vencendo60: baseFilteredContracts.filter(c => {
-        const expiryDate = c.expiryDate ? parseISO(c.expiryDate) : null;
+        const expiryDate = safeParseDate(c.expiryDate) || (c.validity ? safeParseDate(extractDateFromText(c.validity)) : null);
         const days = expiryDate ? differenceInDays(expiryDate, new Date()) : -1;
         return days > 30 && days <= 60;
       }).length,
       vencendo90: baseFilteredContracts.filter(c => {
-        const expiryDate = c.expiryDate ? parseISO(c.expiryDate) : null;
+        const expiryDate = safeParseDate(c.expiryDate) || (c.validity ? safeParseDate(extractDateFromText(c.validity)) : null);
         const days = expiryDate ? differenceInDays(expiryDate, new Date()) : -1;
         return days > 60 && days <= 90;
       }).length,
@@ -1624,6 +1828,7 @@ export default function App() {
           `Registrou novo documento: ${protocol.subject}`
         );
         addNotification("Sucesso", "Documento registrado com sucesso!", "success");
+        fetchProtocols();
       }
     } catch (error: any) {
       console.error("Erro ao salvar protocolo:", error);
@@ -1632,7 +1837,15 @@ export default function App() {
   };
 
   const handleDeleteProtocol = async (id: string) => {
-    if (!currentUser || !window.confirm("Tem certeza que deseja excluir este documento?")) return;
+    if (!currentUser) return;
+    
+    setItemToDelete(id);
+    setDeleteType('Protocolo');
+    setShowDeleteConfirm(true);
+  };
+
+  // Função interna para confirmar a exclusão de fato
+  const handleActualDeleteProtocol = async (id: string) => {
     try {
       const { error } = await supabase
         .from('protocols')
@@ -1647,6 +1860,7 @@ export default function App() {
         `Excluiu um documento`
       );
       addNotification("Sucesso", "Documento excluído com sucesso!", "success");
+      fetchProtocols();
     } catch (error: any) {
       console.error("Erro ao excluir protocolo:", error);
       addNotification("Erro", "Falha ao excluir documento.", "error");
@@ -1724,6 +1938,7 @@ export default function App() {
       handleRemoveItem={handleRemoveItem}
       servidores={servidores}
       canDelete={canDelete}
+      canEdit={canEdit}
       handleDeleteDaily={handleDeleteDaily}
       handleDeleteChecklist={handleDeleteChecklist}
       showImportMonthModal={showImportMonthModal}
@@ -1764,6 +1979,27 @@ export default function App() {
 
   const handlePrint = () => {
     window.print();
+  };
+
+  const [isRefreshingDashboard, setIsRefreshingDashboard] = useState(false);
+
+  const handleRefreshAll = async () => {
+    setIsRefreshingDashboard(true);
+    try {
+      await Promise.all([
+        fetchContracts(),
+        fetchFuelRecords(),
+        fetchDailyRecords(),
+        fetchChecklists(),
+        fetchUsers(),
+        fetchServidores()
+      ]);
+      addNotification("Sucesso", "Dashboard atualizado!", "success");
+    } catch (e) {
+      addNotification("Erro", "Falha ao atualizar dados.", "error");
+    } finally {
+      setIsRefreshingDashboard(false);
+    }
   };
 
   const renderView = () => {
@@ -1823,6 +2059,8 @@ export default function App() {
             auditItems={auditItems}
             addNotification={addNotification}
             systemSettings={systemSettings}
+            onRefresh={handleRefreshAll}
+            isRefreshing={isRefreshingDashboard}
           />
         );
       case 'combustivel':
@@ -1944,6 +2182,7 @@ export default function App() {
             setShowDeleteConfirm={setShowDeleteConfirm}
             confirmations={confirmations}
             currentUser={currentUser!}
+            addNotification={addNotification}
           />
         );
       case 'contratos':
@@ -2027,19 +2266,19 @@ export default function App() {
           />
         );
       case 'relatorio_executivo':
-        return <RelatorioExecutivo />;
+        return <RelatorioExecutivo addNotification={addNotification} />;
       case 'protocolo-entrada':
-        return <Protocolo type="entrada" currentUser={currentUser} protocols={protocols} onSave={handleSaveProtocol} onDelete={handleDeleteProtocol} />;
+        return <Protocolo type="entrada" currentUser={currentUser} protocols={protocols} onSave={handleSaveProtocol} onDelete={handleDeleteProtocol} addNotification={addNotification} />;
       case 'protocolo-saida':
-        return <Protocolo type="saida" currentUser={currentUser} protocols={protocols} onSave={handleSaveProtocol} onDelete={handleDeleteProtocol} />;
+        return <Protocolo type="saida" currentUser={currentUser} protocols={protocols} onSave={handleSaveProtocol} onDelete={handleDeleteProtocol} addNotification={addNotification} />;
       case 'protocolo-processos':
-        return <Protocolo type="processos" currentUser={currentUser} protocols={protocols} onSave={handleSaveProtocol} onDelete={handleDeleteProtocol} />;
+        return <Protocolo type="processos" currentUser={currentUser} protocols={protocols} onSave={handleSaveProtocol} onDelete={handleDeleteProtocol} addNotification={addNotification} />;
       case 'protocolo-tramitacao':
-        return <Protocolo type="tramitacao" currentUser={currentUser} protocols={protocols} onSave={handleSaveProtocol} onDelete={handleDeleteProtocol} />;
+        return <Protocolo type="tramitacao" currentUser={currentUser} protocols={protocols} onSave={handleSaveProtocol} onDelete={handleDeleteProtocol} addNotification={addNotification} />;
       case 'protocolo-pendencias':
-        return <Protocolo type="pendencias" currentUser={currentUser} protocols={protocols} onSave={handleSaveProtocol} onDelete={handleDeleteProtocol} />;
+        return <Protocolo type="pendencias" currentUser={currentUser} protocols={protocols} onSave={handleSaveProtocol} onDelete={handleDeleteProtocol} addNotification={addNotification} />;
       case 'protocolo-arquivos':
-        return <Protocolo type="arquivos" currentUser={currentUser} protocols={protocols} onSave={handleSaveProtocol} onDelete={handleDeleteProtocol} />;
+        return <Protocolo type="arquivos" currentUser={currentUser} protocols={protocols} onSave={handleSaveProtocol} onDelete={handleDeleteProtocol} addNotification={addNotification} />;
       case 'manual':
         return <Manual />;
       case 'configuracoes':
@@ -2779,7 +3018,7 @@ export default function App() {
               </div>
 
               <div className="p-6 border-t border-border bg-surface-hover/30 flex flex-col sm:flex-row justify-end gap-3">
-                {selectedChecklistIds.length > 0 && (
+                {selectedChecklistIds.length > 0 && canDelete && (
                   <button
                     onClick={() => {
                       setDeleteType('checklistBulk');

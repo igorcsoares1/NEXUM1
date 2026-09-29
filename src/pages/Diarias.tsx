@@ -275,9 +275,10 @@ const Diarias = ({
               return (
                 <div
                   key={`mobile-daily-${record.id}`}
-                  onClick={() => handleEditDaily(record)}
+                  onClick={() => canEdit && handleEditDaily(record)}
                   className={cn(
-                    "relative group bg-surface border border-border/80 rounded-[28px] p-5 shadow-sm active:scale-[0.98] transition-all touch-manipulation cursor-pointer",
+                    "relative group bg-surface border border-border/80 rounded-[28px] p-5 shadow-sm active:scale-[0.98] transition-all touch-manipulation",
+                    canEdit ? "cursor-pointer" : "cursor-default",
                     selectedDailyIds.includes(record.id) && "ring-2 ring-primary border-primary/20 bg-primary/5"
                   )}
                 >
@@ -350,7 +351,7 @@ const Diarias = ({
 
                   {/* Action Buttons */}
                   <div className="flex items-center gap-2 pt-2">
-                    {record.status === 'pendente' && (
+                    {isAdmin && record.status === 'pendente' && (
                       <>
                         <button 
                           onClick={(e) => { e.stopPropagation(); handleApproveDaily(record); }}
@@ -600,7 +601,7 @@ const Diarias = ({
                     </td>
                     <td className="px-6 py-5 text-right">
                       <div className="flex justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                        {record.status === 'pendente' && (
+                        {isAdmin && record.status === 'pendente' && (
                           <>
                             <button 
                               onClick={() => handleApproveDaily(record)}
@@ -710,14 +711,16 @@ const Diarias = ({
                 <p className="text-xs font-medium text-text-secondary mt-1">Sincronize automaticamente os nomes e matrículas para evitar erros.</p>
               </div>
               <div className="flex gap-2">
-                <button 
-                  onClick={handleSync}
-                  disabled={isSyncing}
-                  className="px-6 py-2.5 rounded-xl text-xs font-black uppercase tracking-widest bg-primary text-white hover:bg-primary/90 transition-all disabled:opacity-50 flex items-center gap-2"
-                >
-                  {isSyncing ? <RefreshCw size={14} className="animate-spin" /> : <RefreshCw size={14} />}
-                  {isSyncing ? 'Sincronizando...' : 'Sincronizar Agora'}
-                </button>
+                {isAdmin && (
+                  <button 
+                    onClick={handleSync}
+                    disabled={isSyncing}
+                    className="px-6 py-2.5 rounded-xl text-xs font-black uppercase tracking-widest bg-primary text-white hover:bg-primary/90 transition-all disabled:opacity-50 flex items-center gap-2"
+                  >
+                    {isSyncing ? <RefreshCw size={14} className="animate-spin" /> : <RefreshCw size={14} />}
+                    {isSyncing ? 'Sincronizando...' : 'Sincronizar Agora'}
+                  </button>
+                )}
                 <button 
                   onClick={() => setViewMode('servidores')}
                   className="px-6 py-2.5 rounded-xl text-xs font-black uppercase tracking-widest btn-surface"

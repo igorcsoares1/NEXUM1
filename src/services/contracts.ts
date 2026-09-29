@@ -4,7 +4,7 @@ import { Contract, User } from '../types';
 
 const handleError = (error: any, ctx: string) => console.error(`Erro em ${ctx}:`, error?.message);
 
-import { parseCurrencyToNumber, formatCurrency } from '../utils/format';
+import { parseCurrencyToNumber, formatCurrency, normalizeDateForInput, extractDateFromText } from '../utils/format';
 
 export const getContractTotalValue = (contract: Contract): number => {
   const baseValue = parseCurrencyToNumber(contract.totalValue || '0');
@@ -35,12 +35,19 @@ export const handleSaveContract = async (
   }
 
   try {
+    const normalizedExpiryDate = normalizeDateForInput(newContractData.expiryDate) || extractDateFromText(newContractData.validity) || newContractData.expiryDate;
+    const normalizedSignatureDate = normalizeDateForInput(newContractData.signatureDate) || newContractData.signatureDate || '';
+
+    const payload = {
+      ...newContractData,
+      expiryDate: normalizedExpiryDate,
+      signatureDate: normalizedSignatureDate
+    };
+
     if (editingContract) {
       const { error } = await supabase
         .from('contracts')
-        .update({
-          ...newContractData
-        })
+        .update(payload)
         .eq('id', editingContract.id);
       
       if (error) throw error;
@@ -48,7 +55,7 @@ export const handleSaveContract = async (
       const { error } = await supabase
         .from('contracts')
         .insert({
-          ...newContractData,
+          ...payload,
           prefeituraId: currentUser.prefeituraId || '1'
         });
       

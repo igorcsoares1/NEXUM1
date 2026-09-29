@@ -88,14 +88,16 @@ const Servidores = ({
               <p className="text-sm text-text-secondary font-medium">Gestão de funcionários e beneficiários de diárias.</p>
             </div>
             <div className="flex items-center gap-2">
-              <button 
-                onClick={handleSync}
-                disabled={isSyncing}
-                title="Sincronizar nomes das diárias"
-                className="w-11 h-11 flex items-center justify-center bg-surface border border-border rounded-2xl text-primary active:scale-95 transition-all shadow-sm disabled:opacity-50"
-              >
-                <RefreshCw size={20} className={isSyncing ? "animate-spin" : ""} />
-              </button>
+              {isAdmin && (
+                <button 
+                  onClick={handleSync}
+                  disabled={isSyncing}
+                  title="Sincronizar nomes das diárias"
+                  className="w-11 h-11 flex items-center justify-center bg-surface border border-border rounded-2xl text-primary active:scale-95 transition-all shadow-sm disabled:opacity-50"
+                >
+                  <RefreshCw size={20} className={isSyncing ? "animate-spin" : ""} />
+                </button>
+              )}
               <button 
                 onClick={handlePrint}
                 className="w-11 h-11 flex items-center justify-center bg-surface border border-border rounded-2xl text-text-primary active:scale-95 transition-all shadow-sm"
@@ -167,7 +169,7 @@ const Servidores = ({
                       <div className="flex items-center gap-2">
                         <IdCard size={14} className="text-primary/40" />
                         <p className="text-sm font-black text-text-primary">
-                          {servidor.registrationNumber || 'N/A'}
+                          {servidor.registrationNumber || 'N/D'}
                         </p>
                       </div>
                     </td>
@@ -196,7 +198,7 @@ const Servidores = ({
                   </div>
                   <div className="flex-1 min-w-0">
                     <h3 className="font-black truncate text-base leading-none mb-1">{servidor.name}</h3>
-                    <p className="text-[10px] uppercase font-black tracking-widest text-primary">Matrícula: {servidor.registrationNumber || 'N/A'}</p>
+                    <p className="text-[10px] uppercase font-black tracking-widest text-primary">Matrícula: {servidor.registrationNumber || 'N/D'}</p>
                   </div>
                 </div>
 

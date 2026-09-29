@@ -42,26 +42,76 @@ export const safeHtml2Canvas = async (element: HTMLElement, options: any = {}) =
   }
 };
 
+export const generateMultiPagePDF = async (
+  elementOrId: HTMLElement | string,
+  filename: string,
+  onProgress?: (msg: string) => void
+) => {
+  const element = typeof elementOrId === 'string' ? document.getElementById(elementOrId) : elementOrId;
+  if (!element) {
+    throw new Error('Elemento não encontrado para gerar PDF.');
+  }
+
+  onProgress?.('Renderizando relatório...');
+
+  const canvas = await safeHtml2Canvas(element, {
+    scale: 2,
+    useCORS: true,
+    logging: false,
+    backgroundColor: '#ffffff',
+    ignoreElements: (el: Element) => {
+      return el.classList?.contains('print:hidden') || el.classList?.contains('no-print');
+    }
+  });
+
+  onProgress?.('Formatando páginas...');
+
+  const pdf = new jsPDF('p', 'mm', 'a4');
+  const pdfWidth = 210;
+  const pdfPageHeight = 297;
+
+  // Altura exata em pixels do canvas correspondente a 1 página A4
+  const pageHeightPx = Math.floor(canvas.width * (pdfPageHeight / pdfWidth));
+  let renderedHeight = 0;
+  let pageIndex = 0;
+
+  while (renderedHeight < canvas.height) {
+    const currentChunkHeight = Math.min(pageHeightPx, canvas.height - renderedHeight);
+
+    const pageCanvas = document.createElement('canvas');
+    pageCanvas.width = canvas.width;
+    pageCanvas.height = pageHeightPx;
+    const pageCtx = pageCanvas.getContext('2d');
+
+    if (pageCtx) {
+      pageCtx.fillStyle = '#ffffff';
+      pageCtx.fillRect(0, 0, pageCanvas.width, pageCanvas.height);
+      pageCtx.drawImage(
+        canvas,
+        0, renderedHeight, canvas.width, currentChunkHeight,
+        0, 0, canvas.width, currentChunkHeight
+      );
+    }
+
+    const chunkImgData = pageCanvas.toDataURL('image/jpeg', 0.95);
+
+    if (pageIndex > 0) {
+      pdf.addPage('a4', 'p');
+    }
+
+    pdf.addImage(chunkImgData, 'JPEG', 0, 0, pdfWidth, pdfPageHeight);
+
+    renderedHeight += currentChunkHeight;
+    pageIndex++;
+  }
+
+  onProgress?.('Salvando arquivo...');
+  pdf.save(filename);
+};
+
 export const generateStructuredPDF = async (elementId: string, filename: string) => {
-  const element = document.getElementById(elementId);
-  if (!element) return;
-
   try {
-    const canvas = await safeHtml2Canvas(element, {
-      scale: 2,
-      useCORS: true,
-      logging: false,
-      backgroundColor: '#ffffff'
-    });
-
-    const imgData = canvas.toDataURL('image/png');
-    const pdf = new jsPDF('p', 'mm', 'a4');
-    const imgProps = pdf.getImageProperties(imgData);
-    const pdfWidth = pdf.internal.pageSize.getWidth();
-    const pdfHeight = (imgProps.height * pdfWidth) / imgProps.width;
-
-    pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight);
-    pdf.save(filename);
+    await generateMultiPagePDF(elementId, filename);
   } catch (error) {
     console.error("Erro ao gerar PDF:", error);
   }
@@ -323,7 +373,12 @@ export const generateUsersPDF = (records: any[], systemSettings: any) => {
   const body = records.map(r => [
     r.name || '-',
     r.email || '-',
-    r.role || '-',
+    r.role === 'superadmin' ? 'Super Admin' :
+    r.role === 'admin' ? 'Administrador' :
+    r.role === 'gestor' ? 'Gestor' :
+    r.role === 'visualizador' ? 'Visualizador' :
+    r.role === 'compras' ? 'Compras' :
+    r.role === 'transportes' ? 'Transportes' : (r.role || '-'),
     r.department || '-',
     r.status || '-',
     r.lastLogin || '-'
@@ -348,7 +403,10 @@ export const generateAuditLogsPDF = (records: any[], systemSettings: any) => {
     r.time || '-',
     r.user || '-',
     r.title || '-',
-    r.type || '-'
+    r.type === 'fuel' ? 'Combustível' :
+    r.type === 'checklist' ? 'Checklist' :
+    r.type === 'daily' ? 'Diárias' :
+    r.type === 'contract' ? 'Contratos' : (r.type || '-')
   ]);
   
   autoTable(doc, {
