@@ -1144,14 +1144,18 @@ const FONTES_FUNDEB = new Set(['1540', '1541', '1542', '1543', '1546', '2540', '
  * Despesa com pessoal pela regra do demonstrativo da contabilidade (validada com 12 meses de Coaraci):
  *   bruta   = vencimentos (3.1.90.11) + temporários (3.1.90.04) + consórcios (3.1.71.70)
  *           + 60% × (consultoria 3.3.90.35 + serviços de terceiros de mão de obra)
- *   líquida = bruta − ACS/ACE (fonte 1604, grupo 3.1) − piso da enfermagem
+ *   líquida = bruta − ACS/ACE (fonte 1604) − piso da enfermagem (fonte 1605), só nos elementos 11 e 04
  *   RCL aj. = receita do mês (SIGA) − emendas individuais − transferências ACS/ACE
  * Indenizações trabalhistas (3.1.90.94) ficam de fora (art. 19, § 1º, I, da LRF).
  */
-/** Piso da enfermagem pelo SIGA: despesa liquidada no mês, fonte 1605, grupo 3.1 (mesma lógica do ACS/ACE na fonte 1604). */
+/** Elementos que entram na despesa bruta: as deduções (ACS/ACE, enfermagem) só podem sair deles (sem encargos 3.1.90.13). */
+const ELEMENTOS_BRUTA = ['3.1.90.11', '3.1.90.04'];
+const naBruta = (l: LinhaDespesa) => ELEMENTOS_BRUTA.some(e => l.elemento.startsWith(e));
+
+/** Piso da enfermagem pelo SIGA: despesa liquidada no mês, fonte 1605, elementos 11 e 04. */
 export function enfermagemSiga(p: PacoteSiga): number | null {
   if (!p.despesa) return null;
-  return p.despesa.linhas.filter(l => !/C[ÂA]MARA/i.test(l.orgao) && l.fonte === '1605' && l.elemento.startsWith('3.1'))
+  return p.despesa.linhas.filter(l => !/C[ÂA]MARA/i.test(l.orgao) && l.fonte === '1605' && naBruta(l))
     .reduce((a, l) => a + l.v.liq_mes, 0);
 }
 
@@ -1175,7 +1179,7 @@ export function calcularPessoalSiga(p: PacoteSiga, comp: Complementos) {
   const consorcios = s(l => l.elemento.startsWith('3.1.71.70'));
   const consultoria = s(l => l.elemento.startsWith('3.3.90.35'));
   const indenizacoes = s(l => l.elemento.startsWith('3.1.90.94'));
-  const acs = s(l => l.fonte === '1604' && l.elemento.startsWith('3.1'));
+  const acs = s(l => l.fonte === '1604' && naBruta(l));
   const terceiros = comp.pessoal_terceiros ?? 0;
   const terceirizacao = 0.6 * (consultoria + terceiros);
   const bruta = vencimentos + temporarios + consorcios + terceirizacao;
@@ -1630,7 +1634,7 @@ const rs = (k: keyof Complementos, label: string, dica: string): Campo => ({ k, 
 
 // Sempre visíveis: o mínimo que não existe no SIGA.
 const CAMPOS_MES: Campo[] = [
-  rs('pessoal_terceiros', 'Serviços de terceiros de mão de obra', 'Planilha de pessoal: "Outros Serviços de Terceiros – PJ (39)" (+ PF, se houver)'),
+  rs('pessoal_terceiros', 'Serviços de terceiros de mão de obra', 'Planilha de pessoal: linha "Outros Serviços de Terceiros – PJ (39)" (+ PF 36)'),
   rs('pessoal_emendas', 'Emendas individuais', 'Planilha de pessoal: "Emendas Individuais". Vazio = 0'),
   rs('pessoal_transf_acs', 'Transferências para ACS/ACE', 'Planilha de pessoal: "Transferências do ACS e ACE – Fonte 604"'),
   rs('duodecimo_repassado_mes', 'Duodécimo repassado à Câmara', 'O acumulado do ano é somado pelos meses salvos'),

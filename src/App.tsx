@@ -324,6 +324,7 @@ export default function App() {
   }, [contracts, addAlert, isLoggedIn]);
 
   const [dashboardDateRange, setDashboardDateRange] = useState('6months');
+  const [isRefreshingDashboard, setIsRefreshingDashboard] = useState(false);
   const [dashboardStartDate, setDashboardStartDate] = useState(
     () => {
       const d = new Date();
@@ -339,18 +340,22 @@ export default function App() {
     let start: Date;
     let end: Date = new Date();
 
+    // Datas "AAAA-MM-DD" são lidas no horário local (new Date('2026-08-01') cai em 31/07 no Brasil).
     if (dashboardDateRange === 'custom' && dashboardStartDate && dashboardEndDate) {
-      start = new Date(dashboardStartDate);
-      end = new Date(dashboardEndDate);
+      start = safeParseDate(dashboardStartDate) || new Date();
+      end = safeParseDate(dashboardEndDate) || new Date();
     } else {
+      // últimos N meses completos + o mês atual (a partir do dia 1º)
       const months = dashboardDateRange === '3months' ? 3 : dashboardDateRange === '12months' ? 12 : 6;
       start = new Date();
-      start.setMonth(start.getMonth() - months);
+      start = new Date(start.getFullYear(), start.getMonth() - (months - 1), 1);
     }
+    start.setHours(0, 0, 0, 0);
+    end.setHours(23, 59, 59, 999);
 
     const filterByDate = (dateStr: string) => {
-      const d = new Date(dateStr);
-      return d >= start && d <= end;
+      const d = safeParseDate(dateStr);
+      return !!d && d >= start && d <= end;
     };
 
     return {
@@ -366,7 +371,7 @@ export default function App() {
     const { fuel, daily, checklists, startDate, endDate } = dashboardFilteredData;
     
     // Generate months between start and end
-    const data: { name: string; value: number; timestamp: number }[] = [];
+    const data: { name: string; value: number; timestamp: number; combustivel: number; diarias: number; processos: number }[] = [];
     let current = new Date(startDate);
     current.setDate(1); // Start of month
 
@@ -376,13 +381,17 @@ export default function App() {
       data.push({
         name: `${monthNames[current.getMonth()]}/${String(current.getFullYear()).slice(2)}`,
         value: 0,
+        combustivel: 0,
+        diarias: 0,
+        processos: 0,
         timestamp: current.getTime()
       });
       current.setMonth(current.getMonth() + 1);
     }
 
-    const addToChart = (dateStr: string, amount: number) => {
-      const d = new Date(dateStr);
+    const addToChart = (dateStr: string, amount: number, serie: 'combustivel' | 'diarias' | 'processos') => {
+      const d = safeParseDate(dateStr);
+      if (!d) return;
       const monthIdx = d.getMonth();
       const year = d.getFullYear();
       
@@ -393,12 +402,13 @@ export default function App() {
 
       if (entry) {
         entry.value += amount;
+        entry[serie] += amount;
       }
     };
 
-    fuel.forEach(r => addToChart(r.date, parseCurrencyToNumber(r.cost)));
-    daily.forEach(r => addToChart(r.date, parseCurrencyToNumber(r.value)));
-    checklists.forEach(r => addToChart(r.submissionDate, parseCurrencyToNumber(r.invoiceValue)));
+    fuel.forEach(r => addToChart(r.date, parseCurrencyToNumber(r.cost), 'combustivel'));
+    daily.forEach(r => addToChart(r.date, parseCurrencyToNumber(r.value), 'diarias'));
+    checklists.forEach(r => addToChart(r.submissionDate, parseCurrencyToNumber(r.invoiceValue), 'processos'));
 
     return data;
   }, [dashboardFilteredData]);
@@ -689,9 +699,9 @@ export default function App() {
       if (contractFilter === 'vencendo60') return daysRemaining > 30 && daysRemaining <= 60;
       if (contractFilter === 'vencendo90') return daysRemaining > 60 && daysRemaining <= 90;
       if (contractFilter === 'consumo90') {
-        const cons = parseFloat((c.consumption || '0').replace(/[R$\s.]/g, '').replace(',', '.'));
-        const total = parseFloat((c.totalValue || '0').replace(/[R$\s.]/g, '').replace(',', '.'));
-        return total > 0 && (cons / total) > 0.9;
+        const cons = parseCurrencyToNumber(c.consumption || '0');
+        const total = contractService.getContractTotalValue(c);
+        return total > 0 && (cons / total) >= 0.9;
       }
       return true;
     });
@@ -2020,6 +2030,12 @@ export default function App() {
             auditItems={auditItems}
             addNotification={addNotification}
             systemSettings={systemSettings}
+            isRefreshing={isRefreshingDashboard}
+            onRefresh={async () => {
+              setIsRefreshingDashboard(true);
+              try { await Promise.all([fetchContracts(), fetchFuelRecords(), fetchDailyRecords(), fetchChecklists()]); }
+              finally { setIsRefreshingDashboard(false); }
+            }}
           />
         );
       case 'combustivel':

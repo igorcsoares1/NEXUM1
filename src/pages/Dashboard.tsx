@@ -1,40 +1,25 @@
-import React from 'react';
-import { motion } from 'motion/react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
-  AlertTriangle,
-  Database,
-  Fuel,
-  TrendingUp,
-  ClipboardCheck,
-  BarChart3,
-  Clock,
-  RefreshCw
+  AlertTriangle, Database, Fuel, ClipboardCheck, RefreshCw, FileText, Truck, Plane,
+  Users, CheckCircle2, ChevronRight, Wallet, Download
 } from 'lucide-react';
 import {
-  AreaChart,
-  Area,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  ResponsiveContainer,
-  PieChart,
-  Pie,
-  Cell
+  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend
 } from 'recharts';
-import { format, differenceInDays, parseISO } from 'date-fns';
-import { StatCard } from '../components/ui/StatCard';
+import { differenceInDays } from 'date-fns';
 import { cn } from '../lib/utils';
-import { User, FuelRecord, DailyRecord, Contract, ChecklistItem, AuditItem, View, SystemSettings } from '../types';
-import { parseCurrencyToNumber, safeGetDaysRemaining } from '../utils/format';
+import { supabase } from '../lib/supabase';
+import { User, FuelRecord, DailyRecord, Contract, ChecklistItem, AuditItem, View, SystemSettings, Vehicle } from '../types';
+import { parseCurrencyToNumber, safeGetDaysRemaining, safeParseDate } from '../utils/format';
+import { getContractTotalValue } from '../services/contracts';
 import { generateAuditLogsPDF } from '../utils/pdf';
 
 interface DashboardProps {
   currentUser: User | null;
-  fuelRecords: FuelRecord[];
-  dailyRecords: DailyRecord[];
-  contracts: Contract[];
-  checklistRecords: ChecklistItem[];
+  fuelRecords: FuelRecord[];          // já filtrados pelo período
+  dailyRecords: DailyRecord[];        // já filtrados pelo período
+  contracts: Contract[];              // todos
+  checklistRecords: ChecklistItem[];  // já filtrados pelo período
   setActiveView: (view: View) => void;
   setContractFilter: (filter: string) => void;
   dashboardDateRange: string;
@@ -51,380 +36,370 @@ interface DashboardProps {
   isRefreshing?: boolean;
 }
 
+const COR = { combustivel: '#0ea5e9', diarias: '#f59e0b', processos: '#10b981' };
+const brl = (v: number, casas = 2) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', minimumFractionDigits: casas, maximumFractionDigits: casas });
+const brlCurto = (v: number) => Math.abs(v) >= 1e6 ? `R$ ${(v / 1e6).toLocaleString('pt-BR', { maximumFractionDigits: 1 })} mi`
+  : Math.abs(v) >= 1e3 ? `R$ ${(v / 1e3).toLocaleString('pt-BR', { maximumFractionDigits: 0 })} mil` : brl(v, 0);
+const num = (v: number) => v.toLocaleString('pt-BR', { maximumFractionDigits: 0 });
+const pct = (v: number) => `${v.toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 })}%`;
+const litros = (q: any) => {
+  const s = String(q ?? '').replace(/[^\d.,-]/g, '');
+  const n = s.includes(',') ? parseFloat(s.replace(/\./g, '').replace(',', '.')) : parseFloat(s);
+  return isNaN(n) ? 0 : n;
+};
+const diasDesde = (d?: string) => { const x = safeParseDate(d); return x ? differenceInDays(new Date(), x) : 0; };
+
+type Alerta = { nivel: 'urgente' | 'atencao'; texto: string; acao: () => void };
+
+/** Cartão de indicador. */
+const Kpi = ({ titulo, valor, sub, icone, onClick, tom = 'normal' }: {
+  titulo: string; valor: string; sub?: React.ReactNode; icone: React.ReactNode; onClick?: () => void; tom?: 'normal' | 'bom' | 'alerta' | 'ruim';
+}) => (
+  <button type="button" onClick={onClick} disabled={!onClick}
+    className={cn('glass-card p-4 text-left flex flex-col gap-3 transition-all disabled:cursor-default',
+      onClick && 'hover:border-primary/40 hover:-translate-y-0.5 active:scale-[0.99]')}>
+    <div className="flex items-center justify-between">
+      <span className="text-[10px] font-black uppercase tracking-widest text-text-secondary">{titulo}</span>
+      <span className={cn('p-2 rounded-xl',
+        tom === 'bom' ? 'bg-emerald-500/10 text-emerald-600' : tom === 'alerta' ? 'bg-amber-500/10 text-amber-600'
+          : tom === 'ruim' ? 'bg-rose-500/10 text-rose-600' : 'bg-primary/10 text-primary')}>{icone}</span>
+    </div>
+    <div className="min-w-0">
+      <p className="text-xl md:text-2xl font-black tracking-tight truncate">{valor}</p>
+      {sub && <div className="text-xs text-text-secondary font-medium mt-1">{sub}</div>}
+    </div>
+  </button>
+);
+
+const Painel = ({ titulo, sub, acao, children, className }: { titulo: string; sub?: string; acao?: React.ReactNode; children: React.ReactNode; className?: string }) => (
+  <section className={cn('glass-card p-5 md:p-6 flex flex-col', className)}>
+    <div className="flex items-start justify-between gap-3 mb-4">
+      <div>
+        <h3 className="text-base md:text-lg font-black tracking-tight">{titulo}</h3>
+        {sub && <p className="text-xs text-text-secondary font-medium">{sub}</p>}
+      </div>
+      {acao}
+    </div>
+    <div className="flex-1">{children}</div>
+  </section>
+);
+
+const Vazio = ({ texto }: { texto: string }) => <p className="text-sm text-text-secondary italic py-6 text-center">{texto}</p>;
+
 const Dashboard = ({
-  currentUser,
-  fuelRecords,
-  dailyRecords,
-  contracts,
-  checklistRecords,
-  setActiveView,
-  setContractFilter,
-  dashboardDateRange,
-  setDashboardDateRange,
-  dashboardStartDate,
-  setDashboardStartDate,
-  dashboardEndDate,
-  setDashboardEndDate,
-  chartData,
-  auditItems,
-  addNotification,
-  systemSettings,
-  onRefresh,
-  isRefreshing = false
+  currentUser, fuelRecords, dailyRecords, contracts, checklistRecords, setActiveView, setContractFilter,
+  dashboardDateRange, setDashboardDateRange, dashboardStartDate, setDashboardStartDate, dashboardEndDate, setDashboardEndDate,
+  chartData, auditItems, addNotification, systemSettings, onRefresh, isRefreshing = false
 }: DashboardProps) => {
-  const totalFuelCost = fuelRecords.reduce((acc, record) => {
-    const cost = parseCurrencyToNumber(record.cost);
-    return acc + cost;
-  }, 0);
+  // Dados que não vêm por props: frota e último Relatório Executivo salvo
+  const [frota, setFrota] = useState<Vehicle[] | null>(null);
+  const [relExec, setRelExec] = useState<any | null>(null);
+  useEffect(() => {
+    if (!currentUser?.prefeituraId) return;
+    supabase.from('frota').select('id, placa, nome, status, km_atual, km_proxima_revisao').eq('prefeituraId', currentUser.prefeituraId)
+      .then(({ data, error }) => setFrota(error ? [] : (data as any) || []));
+    supabase.from('relatorios_executivos').select('competencia, periodo, data').order('competencia', { ascending: false }).limit(1)
+      .then(({ data, error }) => setRelExec(error ? null : data?.[0] || null));
+  }, [currentUser?.prefeituraId, isRefreshing]);
 
-  const totalDailyCost = dailyRecords.reduce((acc, record) => {
-    const val = parseCurrencyToNumber(record.value);
-    return acc + val;
-  }, 0);
+  const irContratos = (filtro: string) => setContractFilter(filtro);
 
-  const totalContractConsumption = contracts.reduce((acc, record) => {
-    const cons = parseCurrencyToNumber(record.consumption);
-    return acc + cons;
-  }, 0);
+  // ── Contratos (independem do período: situação de hoje) ──
+  const c = useMemo(() => {
+    const comDias = contracts.map(ct => {
+      const total = getContractTotalValue(ct);
+      const consumo = parseCurrencyToNumber(ct.consumption || '0');
+      return { ct, dias: safeGetDaysRemaining(ct.expiryDate), total, consumo, uso: total > 0 ? consumo / total * 100 : 0 };
+    });
+    const vigentes = comDias.filter(x => x.dias >= 0 && x.ct.status !== 'vencido');
+    const valor = vigentes.reduce((a, x) => a + x.total, 0);
+    const consumo = vigentes.reduce((a, x) => a + Math.min(x.consumo, x.total || x.consumo), 0);
+    return {
+      vigentes, valor, consumo, saldo: Math.max(0, valor - consumo), exec: valor > 0 ? consumo / valor * 100 : 0,
+      vencendo30: vigentes.filter(x => x.dias <= 30).sort((a, b) => a.dias - b.dias),
+      vencendo90: vigentes.filter(x => x.dias <= 90).sort((a, b) => a.dias - b.dias),
+      consumo90: vigentes.filter(x => x.uso >= 90),
+      vencidosAbertos: comDias.filter(x => x.dias < 0 && x.ct.status !== 'vencido'),
+    };
+  }, [contracts]);
 
-  const totalActiveContractsValue = contracts
-    .filter(c => c.status === 'vigente' || c.status === 'atencao' || c.status === 'aditivado')
-    .reduce((acc, c) => {
-      const val = parseCurrencyToNumber(c.totalValue);
-      return acc + val;
-    }, 0);
+  // ── Processos de pagamento no período ──
+  const p = useMemo(() => {
+    const porStatus = { em_analise: 0, pendente: 0, atencao: 0, concluido: 0 } as Record<string, number>;
+    checklistRecords.forEach(ch => { porStatus[ch.status] = (porStatus[ch.status] || 0) + 1; });
+    const abertos = checklistRecords.filter(ch => ch.status !== 'concluido');
+    return {
+      total: checklistRecords.length, porStatus,
+      valor: checklistRecords.reduce((a, ch) => a + parseCurrencyToNumber(ch.invoiceValue || '0'), 0),
+      parados: abertos.filter(ch => diasDesde(ch.submissionDate) > 15),
+      concluidosIncompletos: checklistRecords.filter(ch => ch.status === 'concluido' && (ch.items || []).some(i => !i.checked)),
+    };
+  }, [checklistRecords]);
 
-  const budgetConsumptionPercent = totalActiveContractsValue > 0
-    ? (totalContractConsumption / totalActiveContractsValue) * 100
-    : 0;
+  // ── Combustível e diárias no período ──
+  const f = useMemo(() => {
+    const porVeiculo = new Map<string, { nome: string; valor: number; litros: number }>();
+    fuelRecords.forEach(r => {
+      const k = (r.plate || r.vehicle || 'Sem identificação').toUpperCase();
+      const v = porVeiculo.get(k) || { nome: r.vehicle || r.plate || 'Sem identificação', valor: 0, litros: 0 };
+      v.valor += parseCurrencyToNumber(r.cost); v.litros += litros(r.quantity);
+      porVeiculo.set(k, v);
+    });
+    const ranking = [...porVeiculo.values()].sort((a, b) => b.valor - a.valor);
+    return {
+      valor: ranking.reduce((a, v) => a + v.valor, 0), litros: ranking.reduce((a, v) => a + v.litros, 0),
+      veiculos: ranking.length, top: ranking.slice(0, 6),
+    };
+  }, [fuelRecords]);
+  const d = useMemo(() => ({
+    valor: dailyRecords.reduce((a, r) => a + parseCurrencyToNumber(r.value), 0),
+    qtd: dailyRecords.length,
+    aguardando: dailyRecords.filter(r => r.approvalStatus === 'pendente' || r.status === 'pendente').length,
+  }), [dailyRecords]);
 
-  const criticalContracts = contracts.filter(c => {
-    const days = safeGetDaysRemaining(c.expiryDate);
-    return days >= 0 && days <= 7;
-  });
+  // ── Frota (situação de hoje) ──
+  const fr = useMemo(() => {
+    if (!frota) return null;
+    const n = (s: string) => frota.filter(v => v.status === s).length;
+    const revisao = frota.filter(v => {
+      const atual = parseInt(String(v.km_atual || '').replace(/\D/g, '')) || 0;
+      const prox = parseInt(String(v.km_proxima_revisao || '').replace(/\D/g, '')) || 0;
+      return prox > 0 && atual >= prox;
+    });
+    return { total: frota.length, em_dia: n('em_dia'), em_uso: n('em_uso'), manutencao: n('manutencao'), parado: n('parado'), revisao };
+  }, [frota]);
 
-  const distributionData = [
-    { name: 'Combustível', value: totalFuelCost, color: '#0ea5e9' },
-    { name: 'Diárias', value: totalDailyCost, color: '#f59e0b' },
-    { name: 'Contratos', value: totalContractConsumption, color: '#10b981' },
-  ];
+  // ── Pessoal (último Relatório Executivo salvo) ──
+  const pessoal = relExec?.data?.pessoal;
+  const indicePessoal: number | undefined = pessoal?.indice_12m ?? pessoal?.indice_mes;
+  const tomPessoal = indicePessoal === undefined ? 'normal' : indicePessoal > 54 ? 'ruim' : indicePessoal > 48.6 ? 'alerta' : 'bom';
 
-  const handleExportLogs = () => {
-    if (auditItems.length === 0) {
-      addNotification("Aviso", "Não há logs para exportar.", "info");
-      return;
-    }
+  // ── Pontos de atenção ──
+  const alertas: Alerta[] = [];
+  if (indicePessoal !== undefined && indicePessoal > 51.3)
+    alertas.push({ nivel: indicePessoal > 54 ? 'urgente' : 'atencao', texto: `Despesa com pessoal em ${pct(indicePessoal)} (${relExec.periodo})${indicePessoal > 54 ? ': acima do limite de 54%' : ': acima do limite prudencial de 51,3%'}`, acao: () => setActiveView('relatorio_executivo') });
+  if (c.vencidosAbertos.length)
+    alertas.push({ nivel: 'urgente', texto: `${c.vencidosAbertos.length} contrato(s) com vigência encerrada ainda marcados como vigentes`, acao: () => irContratos('vencido') });
+  if (c.vencendo30.length)
+    alertas.push({ nivel: c.vencendo30.some(x => x.dias <= 7) ? 'urgente' : 'atencao', texto: `${c.vencendo30.length} contrato(s) vencem nos próximos 30 dias`, acao: () => irContratos('vencendo30') });
+  if (c.consumo90.length)
+    alertas.push({ nivel: 'atencao', texto: `${c.consumo90.length} contrato(s) com 90% ou mais do valor consumido`, acao: () => irContratos('consumo90') });
+  if (p.concluidosIncompletos.length)
+    alertas.push({ nivel: 'urgente', texto: `${p.concluidosIncompletos.length} processo(s) concluído(s) com documentos pendentes`, acao: () => setActiveView('checklists') });
+  if (p.parados.length)
+    alertas.push({ nivel: 'atencao', texto: `${p.parados.length} processo(s) em aberto há mais de 15 dias`, acao: () => setActiveView('checklists') });
+  if (fr?.revisao.length)
+    alertas.push({ nivel: 'atencao', texto: `${fr.revisao.length} veículo(s) com revisão vencida pela quilometragem`, acao: () => setActiveView('frota') });
+  if (d.aguardando)
+    alertas.push({ nivel: 'atencao', texto: `${d.aguardando} diária(s) aguardando aprovação`, acao: () => setActiveView('diarias') });
+  alertas.sort((a, b) => (a.nivel === 'urgente' ? 0 : 1) - (b.nivel === 'urgente' ? 0 : 1));
+
+  const temGrafico = chartData.some(m => (m.combustivel || 0) + (m.diarias || 0) + (m.processos || 0) > 0);
+  const periodo = chartData.length ? `${chartData[0].name} a ${chartData[chartData.length - 1].name}` : '';
+
+  const exportarLogs = () => {
+    if (!auditItems.length) { addNotification('Aviso', 'Não há registros para exportar.', 'info'); return; }
     generateAuditLogsPDF(auditItems, systemSettings);
-    addNotification("Sucesso", "Relatório de logs gerado com sucesso!", "success");
+    addNotification('Sucesso', 'Relatório de registros gerado.', 'success');
   };
+
+  const statusProc = [
+    { k: 'em_analise', label: 'Em análise', cor: 'bg-blue-500' },
+    { k: 'pendente', label: 'Pendente', cor: 'bg-rose-500' },
+    { k: 'atencao', label: 'Atenção', cor: 'bg-amber-500' },
+    { k: 'concluido', label: 'Concluído', cor: 'bg-emerald-500' },
+  ];
 
   return (
     <div className="flex flex-col flex-1 overflow-hidden">
-      <div id="dashboard-content" className="flex flex-col flex-1 overflow-y-auto no-scrollbar pb-24 lg:pb-8">
+      <div id="dashboard-content" className="flex-1 overflow-y-auto no-scrollbar pb-24 lg:pb-8">
+        <div className="p-4 sm:p-6 lg:p-8 space-y-6 max-w-[1600px] mx-auto w-full">
 
-        {/* ── MOBILE/TABLET DASHBOARD ───────────────────────── */}
-        <div className="flex flex-col lg:hidden p-4 sm:p-6 md:p-8 space-y-6">
-          <header className="px-1 flex justify-between items-start">
+          {/* Cabeçalho */}
+          <header className="flex flex-col lg:flex-row lg:items-end justify-between gap-4">
             <div>
-              <h1 className="text-2xl sm:text-3xl font-black tracking-tight">Dashboard Operacional</h1>
-              <p className="text-text-secondary text-xs sm:text-sm font-medium mt-1">Gestão e indicadores municipais.</p>
+              <h1 className="text-2xl lg:text-3xl font-black tracking-tight">Painel de Controle</h1>
+              <p className="text-text-secondary text-sm font-medium">
+                {systemSettings?.entidadeFilha ? `${systemSettings.entidadeFilha} · ` : ''}Situação de hoje e movimentação de {periodo || 'período selecionado'}
+              </p>
             </div>
-            {onRefresh && (
-              <button 
-                onClick={onRefresh}
-                disabled={isRefreshing}
-                className="p-2 bg-surface border border-border/40 rounded-xl text-text-primary active:scale-95 transition-all shadow-sm disabled:opacity-50"
-              >
-                <RefreshCw size={18} className={cn(isRefreshing && "animate-spin")} />
-              </button>
-            )}
-          </header>
-
-          {criticalContracts.length > 0 && (
-            <motion.div
-              initial={{ scale: 0.95, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              className="relative p-6 rounded-[2rem] bg-rose-500 overflow-hidden shadow-2xl shadow-rose-500/30"
-            >
-              <div className="absolute -top-10 -right-10 w-40 h-40 bg-white/10 rounded-full blur-3xl" />
-              <div className="relative z-10">
-                <div className="flex items-center gap-3 mb-3">
-                  <div className="p-2 bg-white/20 rounded-xl backdrop-blur-md">
-                    <AlertTriangle size={20} className="text-white" />
-                  </div>
-                  <span className="text-white font-black uppercase text-[10px] tracking-widest">Ação Necessária</span>
+            <div className="flex flex-wrap items-center gap-2">
+              <select value={dashboardDateRange} onChange={e => setDashboardDateRange(e.target.value)}
+                className="bg-surface border border-border rounded-xl px-3 py-2 text-xs font-black uppercase tracking-widest outline-none focus:border-primary">
+                <option value="3months">Últimos 3 meses</option>
+                <option value="6months">Últimos 6 meses</option>
+                <option value="12months">Últimos 12 meses</option>
+                <option value="custom">Período personalizado</option>
+              </select>
+              {dashboardDateRange === 'custom' && (
+                <div className="flex items-center gap-1.5">
+                  <input type="date" value={dashboardStartDate} onChange={e => setDashboardStartDate(e.target.value)}
+                    className="bg-surface border border-border rounded-xl px-2 py-1.5 text-xs font-bold outline-none focus:border-primary" />
+                  <span className="text-xs text-text-secondary font-bold">até</span>
+                  <input type="date" value={dashboardEndDate} onChange={e => setDashboardEndDate(e.target.value)}
+                    className="bg-surface border border-border rounded-xl px-2 py-1.5 text-xs font-bold outline-none focus:border-primary" />
                 </div>
-                <h4 className="text-white text-lg font-black leading-tight mb-4">
-                  {criticalContracts.length} contratos expiram em menos de 7 dias
-                </h4>
-                <button
-                  onClick={() => { setContractFilter('vencendo30'); }}
-                  className="w-full py-3.5 bg-white text-rose-500 rounded-2xl font-black text-sm uppercase tracking-widest transition-all shadow-sm hover:bg-zinc-50 active:scale-95"
-                >
-                  Verificar agora
+              )}
+              {onRefresh && (
+                <button onClick={onRefresh} disabled={isRefreshing} title="Atualizar dados"
+                  className="p-2 bg-surface border border-border rounded-xl hover:bg-surface-hover disabled:opacity-50">
+                  <RefreshCw size={16} className={cn('text-text-secondary', isRefreshing && 'animate-spin')} />
                 </button>
-              </div>
-            </motion.div>
-          )}
-
-          {/* Quick Stats Grid - More responsive with md:grid-cols-4 */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            <StatCard 
-              title="Total Contratos" 
-              value={totalActiveContractsValue.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 })} 
-              icon={<Database size={20} />} 
-              onClick={() => setActiveView('contratos')}
-            />
-            <StatCard 
-              title="Consumo Médio" 
-              value={`${budgetConsumptionPercent.toFixed(1)}%`} 
-              icon={<TrendingUp size={20} />} 
-              trend={{ value: budgetConsumptionPercent > 80 ? 'Alerta' : 'Estável', isPositive: budgetConsumptionPercent < 80 }}
-            />
-            <StatCard 
-              title="Combustível" 
-              value={totalFuelCost.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 })} 
-              icon={<Fuel size={20} />} 
-              onClick={() => setActiveView('combustivel')}
-            />
-            <StatCard 
-              title="Auditorias" 
-              value={checklistRecords.length.toString()} 
-              icon={<ClipboardCheck size={20} />} 
-              onClick={() => setActiveView('checklists')}
-            />
-          </div>
-
-          {/* Charts Mobile/Tablet */}
-          <section className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div className="space-y-4">
-              <h3 className="text-lg font-black tracking-tight px-1">Distribuição de Gastos</h3>
-              <div className="bg-surface border border-border/60 rounded-[2.5rem] p-6 h-full flex flex-col justify-between shadow-sm">
-                <div className="h-[200px] w-full">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <PieChart>
-                      <Pie data={distributionData} cx="50%" cy="50%" innerRadius={50} outerRadius={75} paddingAngle={4} dataKey="value">
-                        {distributionData.map((entry, index) => <Cell key={`pie-cell-${entry.name}-${index}`} fill={entry.color} />)}
-                      </Pie>
-                      <Tooltip contentStyle={{ backgroundColor: '#ffffff', border: 'none', borderRadius: '16px', boxShadow: '0 10px 15px -3px rgba(0,0,0,0.1)' }} itemStyle={{ color: '#0f172a' }} labelStyle={{ color: '#64748b' }} />
-                    </PieChart>
-                  </ResponsiveContainer>
-                </div>
-                <div className="grid grid-cols-1 gap-2 mt-4">
-                  {distributionData.map((item, index) => (
-                    <div key={`mob-distribution-${item.name}-${index}`} className="flex items-center justify-between bg-surface-hover/30 p-2.5 rounded-xl border border-border/20">
-                      <div className="flex items-center gap-2">
-                        <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: item.color }} />
-                        <span className="text-[10px] font-bold text-text-secondary uppercase">{item.name}</span>
-                      </div>
-                      <span className="text-[10px] font-black">{item.value.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
+              )}
+              <button onClick={exportarLogs} title="Exportar registros de atividade (PDF)"
+                className="p-2 bg-surface border border-border rounded-xl hover:bg-surface-hover"><Download size={16} className="text-text-secondary" /></button>
+              <button onClick={() => setActiveView('relatorio_executivo')}
+                className="px-4 py-2 rounded-xl font-black uppercase text-[10px] tracking-widest btn-primary flex items-center gap-2">
+                <FileText size={14} /> Relatório Executivo
+              </button>
             </div>
-
-            <div className="space-y-4">
-              <div className="flex justify-between items-end px-1">
-                <h3 className="text-lg font-black tracking-tight">Evolução</h3>
-                <div className="flex items-center gap-2">
-                  {dashboardDateRange === 'custom' && (
-                    <div className="flex items-center gap-2 animate-in fade-in slide-in-from-right-2">
-                      <input 
-                        type="date" 
-                        value={dashboardStartDate} 
-                        onChange={(e) => setDashboardStartDate(e.target.value)}
-                        className="bg-surface border border-border rounded-lg px-2 py-1 text-[9px] font-bold outline-none"
-                      />
-                      <span className="text-[9px] font-bold text-text-secondary">até</span>
-                      <input 
-                        type="date" 
-                        value={dashboardEndDate} 
-                        onChange={(e) => setDashboardEndDate(e.target.value)}
-                        className="bg-surface border border-border rounded-lg px-2 py-1 text-[9px] font-bold outline-none"
-                      />
-                    </div>
-                  )}
-                  <select value={dashboardDateRange} onChange={(e) => setDashboardDateRange(e.target.value)} className="bg-surface border border-border rounded-lg px-2 py-1 text-[10px] font-black uppercase tracking-widest outline-none">
-                    <option value="3months">3M</option>
-                    <option value="6months">6M</option>
-                    <option value="12months">1A</option>
-                    <option value="custom">Personalizado</option>
-                  </select>
-                </div>
-              </div>
-              <div className="bg-surface border border-border/60 rounded-[2.5rem] p-6 h-[280px] shadow-sm">
-                <ResponsiveContainer width="100%" height="100%">
-                  <AreaChart data={chartData}>
-                    <defs><linearGradient id="mobGrad" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="#0ea5e9" stopOpacity={0.1} /><stop offset="95%" stopColor="#0ea5e9" stopOpacity={0} /></linearGradient></defs>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" vertical={false} />
-                    <XAxis dataKey="name" stroke="#64748b" fontSize={9} fontWeight={700} axisLine={false} tickLine={false} dy={10} />
-                    <YAxis stroke="#64748b" fontSize={9} fontWeight={700} axisLine={false} tickLine={false} hide />
-                    <Tooltip contentStyle={{ backgroundColor: '#ffffff', border: 'none', borderRadius: '16px', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1)' }} />
-                    <Area type="monotone" dataKey="value" stroke="#0ea5e9" strokeWidth={3} fill="url(#mobGrad)" />
-                  </AreaChart>
-                </ResponsiveContainer>
-              </div>
-            </div>
-          </section>
-        </div>
-
-        {/* ── DESKTOP DASHBOARD ─────────────────────────────── */}
-        <div className="hidden lg:flex flex-col p-8 space-y-8 max-w-[1600px] mx-auto w-full">
-          <header className="flex justify-between items-end">
-            <div>
-              <div className="flex items-center gap-3">
-                <h1 className="text-4xl font-black tracking-tighter">Dashboard Operacional</h1>
-                {onRefresh && (
-                  <button 
-                    onClick={onRefresh}
-                    disabled={isRefreshing}
-                    className="p-2.5 bg-surface border border-border hover:bg-surface-hover rounded-2xl text-text-primary active:scale-95 transition-all shadow-sm disabled:opacity-50 group mt-1"
-                    title="Atualizar Dados"
-                  >
-                    <RefreshCw size={20} className={cn("text-text-secondary group-hover:text-primary transition-colors", isRefreshing && "animate-spin")} />
-                  </button>
-                )}
-              </div>
-              <p className="text-text-secondary font-medium text-lg">Central de monitoramento e indicadores de gestão municipal.</p>
-            </div>
-            {currentUser && (
-              <div className="flex items-center gap-3">
-                 <button onClick={handleExportLogs} className="px-5 py-2.5 rounded-xl font-black uppercase text-[10px] tracking-widest bg-surface border border-border hover:bg-surface-hover transition-all active:scale-95 shadow-sm">
-                    Exportar Logs
-                 </button>
-                 <button onClick={() => setActiveView('relatorios')} className="px-5 py-2.5 rounded-xl font-black uppercase text-[10px] tracking-widest btn-primary">
-                    Relatórios
-                 </button>
-              </div>
-            )}
           </header>
 
-          {criticalContracts.length > 0 && (
-            <motion.div initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }} className="p-6 bg-rose-500/10 border border-rose-500/20 rounded-3xl flex items-center gap-6">
-              <div className="flex-1">
-                <div className="flex items-center gap-2 mb-1">
-                  <AlertTriangle className="text-rose-500" size={20} />
-                  <span className="text-rose-500 font-black uppercase text-xs tracking-widest">Alerta de Inconformidade</span>
-                </div>
-                <p className="text-text-secondary">Identificamos <strong>{criticalContracts.length} contratos</strong> com vigência expirando nos próximos 7 dias.</p>
+          {/* Pontos de atenção */}
+          {alertas.length > 0 ? (
+            <section className="glass-card p-4 md:p-5">
+              <div className="flex items-center gap-2 mb-3">
+                <AlertTriangle size={16} className="text-amber-600" />
+                <h2 className="text-xs font-black uppercase tracking-widest">Pontos de atenção ({alertas.length})</h2>
               </div>
-              <button onClick={() => { setContractFilter('vencendo30'); }} className="px-8 py-3 bg-rose-500 text-white font-black uppercase text-xs tracking-widest rounded-2xl hover:bg-rose-600 transition-all shadow-lg shadow-rose-500/20 active:scale-95">Acessar Contratos</button>
-            </motion.div>
-          )}
-
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-6">
-            <StatCard 
-              title="Total em Vigor" 
-              value={totalActiveContractsValue.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })} 
-              icon={<Database size={24} />} 
-              onClick={() => setActiveView('contratos')}
-            />
-            <StatCard 
-              title="Consumo Mensal" 
-              value={totalFuelCost.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })} 
-              icon={<Fuel size={24} />} 
-              onClick={() => setActiveView('combustivel')}
-            />
-            <StatCard 
-              title="Orçamentário" 
-              value={`${budgetConsumptionPercent.toFixed(1)}%`} 
-              icon={<BarChart3 size={24} />} 
-              trend={{ value: budgetConsumptionPercent > 80 ? 'Alerta' : 'Estável', isPositive: budgetConsumptionPercent < 80 }} 
-            />
-            <StatCard 
-              title="Auditorias" 
-              value={checklistRecords.length.toString()} 
-              icon={<ClipboardCheck size={24} />} 
-              onClick={() => setActiveView('checklists')}
-              trend={{ value: '+12%', isPositive: true }} 
-            />
-          </div>
-
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-            <div className="lg:col-span-2 glass-card p-8">
-              <div className="flex justify-between items-center mb-8">
-                <div>
-                  <h3 className="text-xl font-black tracking-tight">Evolução de Despesas</h3>
-                  <p className="text-text-secondary text-sm font-medium">Histórico consolidado nos últimos meses</p>
-                </div>
-                <div className="flex items-center gap-3">
-                  {dashboardDateRange === 'custom' && (
-                    <div className="flex items-center gap-2 animate-in fade-in slide-in-from-right-4 duration-300">
-                      <input 
-                        type="date" 
-                        value={dashboardStartDate} 
-                        onChange={(e) => setDashboardStartDate(e.target.value)}
-                        className="bg-surface border border-border rounded-xl px-3 py-2 text-xs font-bold outline-none focus:border-primary transition-all shadow-sm"
-                      />
-                      <span className="text-xs font-black text-text-secondary uppercase tracking-widest">até</span>
-                      <input 
-                        type="date" 
-                        value={dashboardEndDate} 
-                        onChange={(e) => setDashboardEndDate(e.target.value)}
-                        className="bg-surface border border-border rounded-xl px-3 py-2 text-xs font-bold outline-none focus:border-primary transition-all shadow-sm"
-                      />
-                    </div>
-                  )}
-                  <select value={dashboardDateRange} onChange={(e) => setDashboardDateRange(e.target.value)} className="bg-surface border border-border rounded-xl px-4 py-2 text-xs font-black uppercase tracking-widest outline-none focus:border-primary cursor-pointer transition-all shadow-sm hover:border-primary/50">
-                    <option value="3months">3 Meses</option>
-                    <option value="6months">6 Meses</option>
-                    <option value="12months">1 ano</option>
-                    <option value="custom">Período Customizado</option>
-                  </select>
-                </div>
-              </div>
-              <div className="h-[400px]">
-                <ResponsiveContainer width="100%" height="100%">
-                  <AreaChart data={chartData}>
-                    <defs><linearGradient id="dashGrad" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="#0ea5e9" stopOpacity={0.1} /><stop offset="95%" stopColor="#0ea5e9" stopOpacity={0} /></linearGradient></defs>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" vertical={false} />
-                    <XAxis dataKey="name" stroke="#64748b" fontSize={11} fontWeight={700} axisLine={false} tickLine={false} dy={10} />
-                    <YAxis stroke="#64748b" fontSize={11} fontWeight={700} axisLine={false} tickLine={false} tickFormatter={(v) => `R$ ${v / 1000}k`} />
-                    <Tooltip contentStyle={{ backgroundColor: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '16px', padding: '12px' }} itemStyle={{ color: '#0f172a' }} labelStyle={{ color: '#64748b' }} />
-                    <Area type="monotone" dataKey="value" stroke="#0ea5e9" strokeWidth={4} fill="url(#dashGrad)" />
-                  </AreaChart>
-                </ResponsiveContainer>
-              </div>
-            </div>
-
-            <div className="glass-card p-8 flex flex-col">
-              <h3 className="text-xl font-black tracking-tight mb-8">Alocação de Recursos</h3>
-              <div className="flex-1 h-[300px]">
-                <ResponsiveContainer width="100%" height="100%">
-                  <PieChart>
-                    <Pie data={distributionData} cx="50%" cy="50%" innerRadius={80} outerRadius={110} paddingAngle={8} dataKey="value">
-                      {distributionData.map((e, i) => <Cell key={`dash-cell-${e.name}-${i}`} fill={e.color} />)}
-                    </Pie>
-                    <Tooltip contentStyle={{ backgroundColor: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '16px' }} itemStyle={{ color: '#0f172a' }} labelStyle={{ color: '#64748b' }} />
-                  </PieChart>
-                </ResponsiveContainer>
-              </div>
-              <div className="space-y-4 pt-4 border-t border-border">
-                {distributionData.map((item, i) => (
-                  <div key={`dash-legend-${item.name}-${i}`} className="flex justify-between items-center">
-                    <div className="flex items-center gap-3">
-                      <div className="w-3 h-3 rounded-full" style={{ backgroundColor: item.color }} />
-                      <span className="text-sm font-bold text-text-secondary">{item.name}</span>
-                    </div>
-                    <span className="text-sm font-black">{item.value.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</span>
-                  </div>
+              <div className="grid md:grid-cols-2 gap-2">
+                {alertas.map((a, i) => (
+                  <button key={i} onClick={a.acao}
+                    className={cn('flex items-center justify-between gap-3 text-left px-3 py-2.5 rounded-xl border text-sm font-bold transition-colors',
+                      a.nivel === 'urgente' ? 'border-rose-500/30 bg-rose-500/5 text-rose-700 hover:bg-rose-500/10'
+                        : 'border-amber-500/30 bg-amber-500/5 text-amber-800 hover:bg-amber-500/10')}>
+                    <span className="flex items-center gap-2"><span className={cn('w-1.5 h-1.5 rounded-full shrink-0', a.nivel === 'urgente' ? 'bg-rose-500' : 'bg-amber-500')} />{a.texto}</span>
+                    <ChevronRight size={16} className="shrink-0 opacity-60" />
+                  </button>
                 ))}
               </div>
-            </div>
+            </section>
+          ) : (
+            <section className="glass-card p-4 flex items-center gap-3 text-sm font-bold text-emerald-700 border-emerald-500/30 bg-emerald-500/5">
+              <CheckCircle2 size={18} /> Nenhum ponto de atenção nos dados cadastrados.
+            </section>
+          )}
+
+          {/* Indicadores */}
+          <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3 md:gap-4">
+            <Kpi titulo="Contratos vigentes" valor={num(c.vigentes.length)} icone={<Database size={18} />}
+              sub={<>Valor total {brlCurto(c.valor)}</>} onClick={() => irContratos('vigente')} />
+            <Kpi titulo="Saldo contratual" valor={brlCurto(c.saldo)} icone={<Wallet size={18} />}
+              tom={c.exec >= 90 ? 'alerta' : 'normal'} sub={<>{pct(c.exec)} executado</>} onClick={() => irContratos('all')} />
+            <Kpi titulo="Processos no período" valor={num(p.total)} icone={<ClipboardCheck size={18} />}
+              tom={p.concluidosIncompletos.length ? 'ruim' : p.parados.length ? 'alerta' : 'normal'}
+              sub={<>{num(p.total - (p.porStatus.concluido || 0))} em aberto · {brlCurto(p.valor)}</>} onClick={() => setActiveView('checklists')} />
+            <Kpi titulo="Combustível no período" valor={brlCurto(f.valor)} icone={<Fuel size={18} />}
+              sub={<>{num(f.litros)} litros · {num(f.veiculos)} veículos</>} onClick={() => setActiveView('combustivel')} />
+            <Kpi titulo="Diárias no período" valor={brlCurto(d.valor)} icone={<Plane size={18} />}
+              tom={d.aguardando ? 'alerta' : 'normal'} sub={<>{num(d.qtd)} diária(s){d.aguardando ? ` · ${d.aguardando} aguardando` : ''}</>} onClick={() => setActiveView('diarias')} />
+            <Kpi titulo="Despesa com pessoal" icone={<Users size={18} />} tom={tomPessoal}
+              valor={indicePessoal !== undefined ? pct(indicePessoal) : '—'}
+              sub={indicePessoal !== undefined ? <>{pessoal?.indice_12m !== undefined ? '12 meses' : 'no mês'} · {relExec.periodo} · limite 54%</> : 'Gere e salve o Relatório Executivo'}
+              onClick={() => setActiveView('relatorio_executivo')} />
           </div>
 
-          <div className="flex flex-col gap-8 pb-12">
-            <div className="glass-card p-8 bg-primary/5 border-primary/20 flex flex-col items-center justify-center text-center py-16">
-              <div className="w-20 h-20 bg-primary/20 rounded-3xl flex items-center justify-center text-primary mb-6 shadow-2xl shadow-primary/20">
-                <BarChart3 size={40} />
-              </div>
-              <h4 className="text-2xl font-black tracking-tighter mb-3">Relatórios Dinâmicos</h4>
-              <p className="text-text-secondary font-medium mb-8 max-w-lg mx-auto">Acesse análises customizadas e exporte dados para apresentações em PDF ou Excel.</p>
-              {currentUser && (
-                <button onClick={() => setActiveView('relatorios')} className="max-w-xs w-full py-4 rounded-2xl font-black uppercase tracking-widest text-xs btn-primary shadow-lg shadow-primary/20">Ir para Relatórios</button>
-              )}
-            </div>
+          {/* Gráfico + processos */}
+          <div className="grid grid-cols-1 xl:grid-cols-3 gap-4 md:gap-6">
+            <Painel titulo="Despesas acompanhadas por mês" sub="Combustível, diárias e notas fiscais dos processos de pagamento" className="xl:col-span-2">
+              {temGrafico ? (
+                <div className="h-[300px] md:h-[340px]">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={chartData} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" vertical={false} />
+                      <XAxis dataKey="name" stroke="#64748b" fontSize={11} fontWeight={700} axisLine={false} tickLine={false} />
+                      <YAxis stroke="#64748b" fontSize={11} fontWeight={700} axisLine={false} tickLine={false} width={64} tickFormatter={v => brlCurto(v).replace('R$ ', '')} />
+                      <Tooltip formatter={(v: any) => brl(Number(v))} cursor={{ fill: 'rgba(148,163,184,0.12)' }}
+                        contentStyle={{ backgroundColor: '#fff', border: '1px solid #e2e8f0', borderRadius: 12, fontSize: 12 }} />
+                      <Legend iconType="circle" wrapperStyle={{ fontSize: 12, fontWeight: 700 }} />
+                      <Bar dataKey="combustivel" name="Combustível" stackId="a" fill={COR.combustivel} />
+                      <Bar dataKey="diarias" name="Diárias" stackId="a" fill={COR.diarias} />
+                      <Bar dataKey="processos" name="Processos (NF)" stackId="a" fill={COR.processos} radius={[6, 6, 0, 0]} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+              ) : <Vazio texto="Sem lançamentos no período selecionado." />}
+            </Painel>
+
+            <Painel titulo="Processos de pagamento" sub="Por situação, no período" acao={
+              <button onClick={() => setActiveView('checklists')} className="text-xs font-bold text-primary hover:underline">Abrir</button>}>
+              {p.total ? (
+                <div className="space-y-4">
+                  {statusProc.map(s => {
+                    const n = p.porStatus[s.k] || 0;
+                    return (
+                      <div key={s.k}>
+                        <div className="flex justify-between text-sm font-bold mb-1"><span>{s.label}</span><span>{n}</span></div>
+                        <div className="h-2 rounded-full bg-surface-hover overflow-hidden"><div className={cn('h-full rounded-full', s.cor)} style={{ width: `${p.total ? n / p.total * 100 : 0}%` }} /></div>
+                      </div>
+                    );
+                  })}
+                  <div className="pt-3 border-t border-border text-xs text-text-secondary space-y-1">
+                    <p>Valor das notas no período: <strong className="text-text-primary">{brl(p.valor)}</strong></p>
+                    {p.parados.length > 0 && <p className="text-amber-700 font-bold">{p.parados.length} em aberto há mais de 15 dias</p>}
+                    {p.concluidosIncompletos.length > 0 && <p className="text-rose-700 font-bold">{p.concluidosIncompletos.length} concluído(s) com documento pendente</p>}
+                  </div>
+                </div>
+              ) : <Vazio texto="Nenhum processo no período." />}
+            </Painel>
+          </div>
+
+          {/* Listas */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4 md:gap-6">
+            <Painel titulo="Contratos a vencer" sub="Próximos 90 dias" acao={
+              <button onClick={() => irContratos('vencendo30')} className="text-xs font-bold text-primary hover:underline">Ver todos</button>}>
+              {c.vencendo90.length ? (
+                <ul className="divide-y divide-border">
+                  {c.vencendo90.slice(0, 6).map(({ ct, dias, total, consumo }) => (
+                    <li key={ct.id} className="py-2.5 flex items-center justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="text-sm font-bold truncate">{ct.vendor}</p>
+                        <p className="text-[11px] text-text-secondary">Nº {ct.number} · saldo {brlCurto(Math.max(0, total - consumo))}</p>
+                      </div>
+                      <span className={cn('text-[11px] font-black px-2 py-1 rounded-lg whitespace-nowrap',
+                        dias <= 7 ? 'bg-rose-500/10 text-rose-600' : dias <= 30 ? 'bg-amber-500/10 text-amber-700' : 'bg-surface-hover text-text-secondary')}>
+                        {dias === 0 ? 'vence hoje' : `${dias} dia${dias > 1 ? 's' : ''}`}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              ) : <Vazio texto="Nenhum contrato vence nos próximos 90 dias." />}
+            </Painel>
+
+            <Painel titulo="Maiores gastos com combustível" sub="Por veículo, no período" acao={
+              <button onClick={() => setActiveView('combustivel')} className="text-xs font-bold text-primary hover:underline">Abrir</button>}>
+              {f.top.length ? (
+                <ul className="space-y-3">
+                  {f.top.map((v, i) => (
+                    <li key={i}>
+                      <div className="flex justify-between gap-3 text-sm"><span className="font-bold truncate">{v.nome}</span><span className="font-black whitespace-nowrap">{brl(v.valor, 0)}</span></div>
+                      <div className="flex items-center gap-2 mt-1">
+                        <div className="flex-1 h-1.5 rounded-full bg-surface-hover overflow-hidden"><div className="h-full rounded-full" style={{ width: `${f.top[0].valor ? v.valor / f.top[0].valor * 100 : 0}%`, backgroundColor: COR.combustivel }} /></div>
+                        <span className="text-[11px] text-text-secondary w-20 text-right">{num(v.litros)} L</span>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              ) : <Vazio texto="Sem abastecimentos no período." />}
+            </Painel>
+
+            <Painel titulo="Frota municipal" sub="Situação atual" acao={
+              <button onClick={() => setActiveView('frota')} className="text-xs font-bold text-primary hover:underline">Abrir</button>}>
+              {fr === null ? <Vazio texto="Carregando..." /> : fr.total ? (
+                <div className="space-y-4">
+                  <div className="flex items-baseline gap-2"><Truck size={18} className="text-primary" /><span className="text-2xl font-black">{fr.total}</span><span className="text-sm text-text-secondary font-bold">veículos</span></div>
+                  <div className="grid grid-cols-2 gap-2 text-sm">
+                    {[['Em dia', fr.em_dia, 'text-emerald-600'], ['Em uso', fr.em_uso, 'text-sky-600'], ['Em manutenção', fr.manutencao, 'text-amber-600'], ['Parados', fr.parado, 'text-rose-600']].map(([l, n, cor]) => (
+                      <div key={l as string} className="rounded-xl border border-border p-3">
+                        <p className="text-[10px] font-black uppercase tracking-widest text-text-secondary">{l}</p>
+                        <p className={cn('text-xl font-black', cor as string)}>{n as number}</p>
+                      </div>
+                    ))}
+                  </div>
+                  {fr.revisao.length > 0 && <p className="text-xs font-bold text-amber-700">{fr.revisao.length} com revisão vencida: {fr.revisao.slice(0, 4).map(v => v.placa).join(', ')}{fr.revisao.length > 4 ? '…' : ''}</p>}
+                </div>
+              ) : <Vazio texto="Nenhum veículo cadastrado. Importe a frota do SIGA." />}
+            </Painel>
           </div>
         </div>
       </div>
