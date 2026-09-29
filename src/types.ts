@@ -226,6 +226,13 @@ export interface Vehicle {
   tipo_propriedade: 'oficial' | 'locado';
   contrato_id?: string;
   observacao?: string;
+  // dados do relatório "Frota" do SIGA
+  marca?: string;
+  nf_contrato?: string;
+  valor_aquisicao?: number | null;
+  data_aquisicao?: string | null;
+  data_baixa?: string | null;
+  importado_siga_em?: string | null;
   createdAt?: string;
 }
 

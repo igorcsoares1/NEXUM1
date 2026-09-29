@@ -25,7 +25,9 @@ import {
   LayoutGrid,
   List,
   Eye,
-  Clock
+  Clock,
+  Upload,
+  Loader2
 } from 'lucide-react';
 import {
   BarChart, Bar, LineChart, Line, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer
@@ -39,6 +41,22 @@ import { fleetService } from '../services/fleet';
 import { supabase } from '../lib/supabase';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
+import { lerFrotaSiga, normalizarPlaca, VeiculoSiga } from '../utils/sigaFrota';
+
+type LinhaImport = VeiculoSiga & { incluir: boolean; nome: string; existente?: Vehicle };
+const TIPO_LABEL: Record<string, string> = { Carro: 'Carro / Passeio', Caminhonete: 'Caminhonete / Van', Caminhão: 'Caminhão', Ônibus: 'Ônibus / Micro', Moto: 'Moto', Máquina: 'Máquina Pesada' };
+const dataBR = (d?: string | null) => d ? d.split('-').reverse().join('/') : '';
+/** Campos vazios do formulário viram null (colunas numéricas e de data não aceitam ''). */
+const limparCamposSiga = (v: Partial<Vehicle>): Partial<Vehicle> => {
+  const out: any = { ...v };
+  for (const k of ['data_aquisicao', 'data_baixa'] as const) if (!out[k]) out[k] = null;
+  if (out.valor_aquisicao === '' || out.valor_aquisicao === undefined) out.valor_aquisicao = null;
+  else if (typeof out.valor_aquisicao === 'string') {
+    const n = parseFloat(out.valor_aquisicao.replace(/\./g, '').replace(',', '.'));
+    out.valor_aquisicao = isNaN(n) ? null : n;
+  }
+  return out;
+};
 
 interface FrotaMunicipalProps {
   currentUser: User | null;
@@ -65,7 +83,15 @@ export const FrotaMunicipal = ({ currentUser, addNotification, systemSettings }:
   const [loadingOccurrences, setLoadingOccurrences] = useState(false);
   const [isHistoryViewOnly, setIsHistoryViewOnly] = useState(false);
   const [isUpdating, setIsUpdating] = useState(false);
-  const [vehicleToDelete, setVehicleToDelete] = useState<string | null>(null);
+
+  // Importação do SIGA
+  const [showImportModal, setShowImportModal] = useState(false);
+  const [lendoSiga, setLendoSiga] = useState(false);
+  const [salvandoImport, setSalvandoImport] = useState(false);
+  const [linhasImport, setLinhasImport] = useState<LinhaImport[]>([]);
+  const [infoImport, setInfoImport] = useState<{ arquivo: string; unidade: string; emissao: string; avisos: string[] } | null>(null);
+  const [secretariaPadrao, setSecretariaPadrao] = useState('');
+  const [soSemNome, setSoSemNome] = useState(false);
 
   // New Vehicle Form
   const [newVehicleData, setNewVehicleData] = useState<Partial<Vehicle>>({
@@ -152,14 +178,14 @@ export const FrotaMunicipal = ({ currentUser, addNotification, systemSettings }:
     try {
       if (showEditVehicleModal && selectedVehicle) {
         await fleetService.updateVehicle(selectedVehicle.id, {
-          ...newVehicleData,
+          ...limparCamposSiga(newVehicleData),
           placa: newVehicleData.placa?.trim().toUpperCase()
         });
         addNotification("Sucesso", "Veículo atualizado!", "success");
         setShowEditVehicleModal(false);
       } else {
         await fleetService.addVehicle({
-          ...newVehicleData,
+          ...limparCamposSiga(newVehicleData),
           placa: newVehicleData.placa?.trim().toUpperCase(),
           prefeituraId: currentUser.prefeituraId
         });
@@ -205,7 +231,12 @@ export const FrotaMunicipal = ({ currentUser, addNotification, systemSettings }:
       status: vehicle.status,
       tipo_propriedade: vehicle.tipo_propriedade,
       contrato_id: vehicle.contrato_id,
-      observacao: vehicle.observacao
+      observacao: vehicle.observacao,
+      marca: vehicle.marca || '',
+      nf_contrato: vehicle.nf_contrato || '',
+      valor_aquisicao: vehicle.valor_aquisicao ?? null,
+      data_aquisicao: vehicle.data_aquisicao || '',
+      data_baixa: vehicle.data_baixa || ''
     });
     setShowEditVehicleModal(true);
   };
@@ -239,12 +270,95 @@ export const FrotaMunicipal = ({ currentUser, addNotification, systemSettings }:
     }
   };
 
+  const abrirImportacao = () => {
+    setLinhasImport([]); setInfoImport(null); setSoSemNome(false); setShowImportModal(true);
+  };
+
+  const handleArquivoSiga = async (file?: File) => {
+    if (!file) return;
+    setLendoSiga(true);
+    try {
+      const r = await lerFrotaSiga(file);
+      const porPlaca = new Map(vehicles.map(v => [normalizarPlaca(v.placa), v]));
+      setLinhasImport(r.veiculos.map(v => {
+        const existente = porPlaca.get(v.placa);
+        return { ...v, incluir: true, existente, nome: existente?.nome || '' };
+      }));
+      setInfoImport({ arquivo: file.name, unidade: r.unidade, emissao: r.emissao, avisos: r.avisos });
+    } catch (err: any) {
+      addNotification('Erro', err?.message || 'Não foi possível ler o PDF do SIGA.', 'error');
+    } finally {
+      setLendoSiga(false);
+    }
+  };
+
+  const handleConfirmarImport = async () => {
+    if (!currentUser?.prefeituraId) return;
+    const sel = linhasImport.filter(l => l.incluir);
+    if (!sel.length) return;
+    setSalvandoImport(true);
+    const agora = new Date().toISOString();
+    // O SIGA atualiza só os próprios campos; nome, KM, secretaria, cor, status e observações do NEXUM são mantidos.
+    const doSiga = (l: LinhaImport): Partial<Vehicle> => ({
+      marca: l.marca || undefined,
+      combustivel: l.combustivel || undefined,
+      tipo_propriedade: l.tipo_propriedade,
+      nf_contrato: l.nf_contrato || undefined,
+      valor_aquisicao: l.valor_aquisicao,
+      data_aquisicao: l.data_aquisicao,
+      data_baixa: l.data_baixa,
+      importado_siga_em: agora,
+      ...(l.renavam ? { renavam: l.renavam } : {}),
+      ...(l.chassi ? { chassi: l.chassi } : {}),
+      ...(l.ano ? { ano: l.ano } : {}),
+    });
+    let novos = 0, atualizados = 0;
+    try {
+      const inserir = sel.filter(l => !l.existente).map(l => ({
+        ...doSiga(l),
+        prefeituraId: currentUser.prefeituraId,
+        placa: l.placa,
+        nome: l.nome.trim() || l.marca || l.placa,
+        tipo_veiculo: l.tipo_veiculo,
+        ano: l.ano || '',
+        secretaria: secretariaPadrao.trim() || 'A definir',
+        km_atual: '',
+        status: (l.data_baixa ? 'parado' : 'em_dia') as Vehicle['status'],
+        observacao: l.data_baixa ? `Baixado no SIGA em ${dataBR(l.data_baixa)}.` : '',
+      }));
+      for (let i = 0; i < inserir.length; i += 50) {
+        const { error } = await supabase.from('frota').insert(inserir.slice(i, i + 50));
+        if (error) throw error;
+        novos += Math.min(50, inserir.length - i);
+      }
+      for (const l of sel.filter(l => l.existente)) {
+        const ex = l.existente!;
+        const upd: Partial<Vehicle> = { ...doSiga(l) };
+        if (l.nome.trim() && l.nome.trim() !== ex.nome) upd.nome = l.nome.trim();
+        if (!ex.tipo_veiculo) upd.tipo_veiculo = l.tipo_veiculo;
+        if (l.data_baixa && !ex.data_baixa) upd.status = 'parado';
+        const { error } = await supabase.from('frota').update(upd).eq('id', ex.id);
+        if (error) throw error;
+        atualizados++;
+      }
+      addNotification('Importação concluída', `${novos} veículo(s) cadastrado(s) e ${atualizados} atualizado(s) pelo SIGA.`, 'success');
+      setShowImportModal(false);
+    } catch (err: any) {
+      console.error('Erro na importação do SIGA:', err);
+      const falta = /column|coluna/i.test(err?.message || '') ? ' Rode o arquivo supabase_update_frota_siga.sql no Supabase.' : '';
+      addNotification('Erro', `Importação interrompida após ${novos} novo(s) e ${atualizados} atualizado(s).${falta}`, 'error');
+    } finally {
+      setSalvandoImport(false);
+      fetchVehicles();
+    }
+  };
+
   const handleDeleteVehicle = async (id: string) => {
+    if (!confirm("Deseja realmente excluir este veículo?")) return;
     try {
       await fleetService.deleteVehicle(id);
       addNotification("Sucesso", "Veículo removido.", "success");
       fetchVehicles();
-      setVehicleToDelete(null);
     } catch (error) {
       addNotification("Erro", "Falha ao remover veículo.", "error");
     }
@@ -421,6 +535,16 @@ export const FrotaMunicipal = ({ currentUser, addNotification, systemSettings }:
               <Download size={18} />
               <span className="hidden sm:inline">Exportar</span>
             </button>
+
+            {canWrite && (
+              <button
+                onClick={abrirImportacao}
+                className="flex items-center gap-2 px-5 py-2.5 bg-surface border border-border/40 rounded-xl font-bold text-sm hover:bg-surface-hover transition-all"
+              >
+                <Upload size={18} />
+                <span className="hidden sm:inline">Importar do SIGA</span>
+              </button>
+            )}
 
             {canWrite && (
               <button
@@ -792,7 +916,7 @@ export const FrotaMunicipal = ({ currentUser, addNotification, systemSettings }:
                               )}
                               {canWrite && (
                                 <button
-                                  onClick={() => setVehicleToDelete(vehicle.id)}
+                                  onClick={() => handleDeleteVehicle(vehicle.id)}
                                   className="p-2.5 hover:bg-rose-500/10 text-rose-500 rounded-xl transition-all hover:scale-110"
                                   title="Remover Veículo"
                                 >
@@ -857,7 +981,7 @@ export const FrotaMunicipal = ({ currentUser, addNotification, systemSettings }:
                           "text-sm font-black",
                           vehicle.km_proxima_revisao ? "text-amber-600" : "text-text-secondary opacity-50"
                         )}>
-                          {vehicle.km_proxima_revisao ? `${vehicle.km_proxima_revisao} KM` : 'N/D'}
+                          {vehicle.km_proxima_revisao ? `${vehicle.km_proxima_revisao} KM` : 'N/A'}
                         </p>
                       </div>
                     </div>
@@ -930,7 +1054,7 @@ export const FrotaMunicipal = ({ currentUser, addNotification, systemSettings }:
                         )}
                         {canWrite && (
                           <button
-                            onClick={() => setVehicleToDelete(vehicle.id)}
+                            onClick={() => handleDeleteVehicle(vehicle.id)}
                             className="p-2 bg-rose-500/10 text-rose-500 rounded-xl transition-all hover:scale-105 active:scale-95"
                             title="Excluir"
                           >
@@ -1093,9 +1217,9 @@ export const FrotaMunicipal = ({ currentUser, addNotification, systemSettings }:
                     <div className="space-y-2">
                       <label className="text-[10px] font-black text-text-secondary uppercase tracking-widest ml-1">Ano de Fabricação</label>
                       <input
-                        required
                         type="number"
                         className="w-full bg-surface-hover border border-border rounded-2xl px-5 py-3.5 text-sm outline-none focus:border-primary transition-all font-bold"
+                        placeholder="Opcional"
                         value={newVehicleData.ano}
                         onChange={(e) => setNewVehicleData({ ...newVehicleData, ano: e.target.value })}
                       />
@@ -1120,6 +1244,28 @@ export const FrotaMunicipal = ({ currentUser, addNotification, systemSettings }:
                         onChange={(e) => setNewVehicleData({ ...newVehicleData, chassi: e.target.value })}
                       />
                     </div>
+                    <div className="md:col-span-2 pt-2">
+                      <p className="text-[10px] font-black text-text-secondary uppercase tracking-widest ml-1">Dados do SIGA (preenchidos pela importação)</p>
+                    </div>
+                    {([
+                      { k: 'marca', label: 'Marca', type: 'text', ph: 'Ex: VW, FIAT' },
+                      { k: 'nf_contrato', label: 'N. Fiscal / Contrato', type: 'text', ph: 'Ex: 105/2025' },
+                      { k: 'valor_aquisicao', label: 'Valor de Aquisição (R$)', type: 'text', ph: '0,00' },
+                      { k: 'data_aquisicao', label: 'Data de Aquisição', type: 'date', ph: '' },
+                      { k: 'data_baixa', label: 'Data de Baixa', type: 'date', ph: '' },
+                    ] as const).map(f => (
+                      <div key={f.k} className="space-y-2">
+                        <label className="text-[10px] font-black text-text-secondary uppercase tracking-widest ml-1">{f.label}</label>
+                        <input
+                          type={f.type}
+                          inputMode={f.k === 'valor_aquisicao' ? 'decimal' : undefined}
+                          className="w-full bg-surface-hover border border-border rounded-2xl px-5 py-3.5 text-sm outline-none focus:border-primary transition-all font-bold"
+                          placeholder={f.ph}
+                          value={(newVehicleData as any)[f.k] ?? ''}
+                          onChange={(e) => setNewVehicleData({ ...newVehicleData, [f.k]: e.target.value })}
+                        />
+                      </div>
+                    ))}
                   <div className="space-y-2">
                     <label className="text-[10px] font-black text-text-secondary uppercase tracking-widest ml-1">KM Inicial / Atual (Opcional)</label>
                     <div className="relative group">
@@ -1542,38 +1688,158 @@ export const FrotaMunicipal = ({ currentUser, addNotification, systemSettings }:
           </div>
         )}
       </AnimatePresence>
-      {/* Local Delete Confirmation Modal */}
+
+      {/* Importar do SIGA */}
       <AnimatePresence>
-        {vehicleToDelete && (
-          <div className="fixed inset-0 z-[500] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
-            <motion.div 
-              initial={{ opacity: 0, scale: 0.95, y: 20 }} 
-              animate={{ opacity: 1, scale: 1, y: 0 }} 
-              exit={{ opacity: 0, scale: 0.95, y: 20 }} 
-              className="bg-background w-full max-w-sm relative z-10 text-center p-8 rounded-[32px] shadow-2xl border border-border"
-            >
-              <div className="w-16 h-16 bg-rose-500/10 rounded-full flex items-center justify-center text-rose-500 mx-auto mb-6 shrink-0">
-                <Trash2 size={32} />
-              </div>
-              <h3 className="text-xl font-bold mb-2">Excluir Veículo</h3>
-              <p className="text-text-secondary text-sm mb-8">Tem certeza que deseja remover este veículo da frota? Esta ação não pode ser desfeita.</p>
-              <div className="flex flex-col gap-2">
-                <button 
-                  onClick={() => handleDeleteVehicle(vehicleToDelete)} 
-                  className="w-full bg-rose-500 hover:bg-rose-600 text-white py-4 rounded-xl font-black uppercase tracking-widest text-xs transition-all shadow-xl shadow-rose-500/20"
-                >
-                  Confirmar Exclusão
-                </button>
-                <button 
-                  onClick={() => setVehicleToDelete(null)} 
-                  className="w-full py-4 rounded-xl font-black uppercase tracking-widest text-xs text-text-secondary hover:bg-surface-hover transition-all"
-                >
-                  Cancelar
-                </button>
-              </div>
-            </motion.div>
-          </div>
-        )}
+        {showImportModal && (() => {
+          const selecionados = linhasImport.filter(l => l.incluir);
+          const nNovos = selecionados.filter(l => !l.existente).length;
+          const nAtualiza = selecionados.length - nNovos;
+          const semNome = selecionados.filter(l => !l.nome.trim()).length;
+          const placasSiga = new Set(linhasImport.map(l => l.placa));
+          const foraDoSiga = linhasImport.length ? vehicles.filter(v => !placasSiga.has(normalizarPlaca(v.placa))) : [];
+          const visiveis = soSemNome ? linhasImport.filter(l => !l.nome.trim()) : linhasImport;
+          const setLinha = (placa: string, mud: Partial<LinhaImport>) =>
+            setLinhasImport(ls => ls.map(l => l.placa === placa ? { ...l, ...mud } : l));
+          const todos = linhasImport.length > 0 && linhasImport.every(l => l.incluir);
+          return (
+            <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+              <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+                onClick={() => !salvandoImport && setShowImportModal(false)}
+                className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
+              <motion.div
+                initial={{ opacity: 0, scale: 0.95, y: 20 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.95, y: 20 }}
+                className="relative w-full max-w-6xl bg-surface border border-border rounded-[2.5rem] shadow-2xl overflow-hidden flex flex-col max-h-[90vh]"
+              >
+                <div className="p-6 md:p-8 border-b border-border flex justify-between items-center bg-surface-hover/30">
+                  <div className="flex items-center gap-4">
+                    <div className="p-3 bg-primary/10 rounded-2xl text-primary"><Upload size={24} /></div>
+                    <div>
+                      <h3 className="text-lg md:text-xl font-bold">Importar frota do SIGA</h3>
+                      <p className="text-[10px] md:text-xs text-text-secondary font-medium uppercase tracking-widest">
+                        {infoImport ? `${infoImport.unidade} · emitido em ${infoImport.emissao}` : 'Relatórios › Frota (PDF)'}
+                      </p>
+                    </div>
+                  </div>
+                  <button onClick={() => setShowImportModal(false)} disabled={salvandoImport}
+                    className="p-2 hover:bg-surface-hover rounded-xl text-text-secondary transition-colors"><X size={24} /></button>
+                </div>
+
+                <div className="flex-1 overflow-y-auto p-6 md:p-8 space-y-6">
+                  {!linhasImport.length ? (
+                    <label className="block rounded-3xl border-2 border-dashed border-border p-10 text-center cursor-pointer hover:border-primary hover:bg-surface-hover/40 transition-all"
+                      onDragOver={e => e.preventDefault()}
+                      onDrop={e => { e.preventDefault(); handleArquivoSiga(e.dataTransfer.files[0]); }}>
+                      <input type="file" accept=".pdf" className="hidden" onChange={e => { handleArquivoSiga(e.target.files?.[0]); e.target.value = ''; }} />
+                      {lendoSiga ? <Loader2 size={32} className="mx-auto text-primary animate-spin" /> : <Upload size={32} className="mx-auto text-text-secondary" />}
+                      <p className="mt-4 font-black">{lendoSiga ? 'Lendo o relatório...' : 'Arraste aqui o PDF "Frota" do SIGA'}</p>
+                      <p className="text-xs text-text-secondary mt-1">ou clique para escolher o arquivo</p>
+                    </label>
+                  ) : (
+                    <>
+                      <div className="grid md:grid-cols-3 gap-4">
+                        <div className="rounded-2xl bg-surface-hover/50 border border-border p-4">
+                          <p className="text-[10px] font-black text-text-secondary uppercase tracking-widest">No relatório</p>
+                          <p className="text-2xl font-black">{linhasImport.length}</p>
+                          <p className="text-xs text-text-secondary">{nNovos} novo(s) · {nAtualiza} já cadastrado(s)</p>
+                        </div>
+                        <div className="rounded-2xl bg-surface-hover/50 border border-border p-4 md:col-span-2 space-y-2">
+                          <label className="text-[10px] font-black text-text-secondary uppercase tracking-widest">Secretaria dos veículos novos</label>
+                          <input list="secretarias-siga" value={secretariaPadrao} onChange={e => setSecretariaPadrao(e.target.value)}
+                            placeholder="A definir (o SIGA não informa a secretaria)"
+                            className="w-full bg-surface border border-border rounded-xl px-4 py-2.5 text-sm outline-none focus:border-primary font-bold" />
+                          <datalist id="secretarias-siga">{secretarias.map(s => <option key={s} value={s} />)}</datalist>
+                        </div>
+                      </div>
+
+                      <div className="rounded-2xl border border-amber-500/30 bg-amber-500/5 p-4 text-xs text-text-secondary space-y-1">
+                        <p><strong className="text-text-primary">O SIGA não traz o nome/modelo do veículo.</strong> Digite na coluna "Nome / Modelo" (ex.: Hilux 4x4, Gol, Ônibus escolar). Se ficar vazio, o veículo é salvo com o nome da marca e você ajusta depois.</p>
+                        <p>Nos veículos já cadastrados, o SIGA atualiza marca, Renavam, chassi, combustível, ano, vínculo, NF/contrato e datas. Nome, KM, secretaria, cor, status e observações do NEXUM são mantidos.</p>
+                        {foraDoSiga.length > 0 && (
+                          <p className="text-amber-700 font-bold">{foraDoSiga.length} veículo(s) do NEXUM não aparecem neste relatório do SIGA: {foraDoSiga.slice(0, 8).map(v => v.placa).join(', ')}{foraDoSiga.length > 8 ? '…' : ''}. Nada será apagado; vale conferir.</p>
+                        )}
+                        {infoImport?.avisos.map((a, i) => <p key={i} className="text-amber-700">{a}</p>)}
+                      </div>
+
+                      <div className="flex flex-wrap items-center justify-between gap-3">
+                        <label className="flex items-center gap-2 text-xs font-bold cursor-pointer">
+                          <input type="checkbox" checked={soSemNome} onChange={e => setSoSemNome(e.target.checked)} />
+                          Mostrar só os sem nome ({linhasImport.filter(l => !l.nome.trim()).length})
+                        </label>
+                        <button onClick={() => { setLinhasImport([]); setInfoImport(null); }} className="text-xs font-bold text-text-secondary hover:text-primary">
+                          Trocar arquivo ({infoImport?.arquivo})
+                        </button>
+                      </div>
+
+                      <div className="overflow-x-auto rounded-2xl border border-border">
+                        <table className="w-full text-xs">
+                          <thead className="bg-surface-hover/50 text-[10px] uppercase tracking-widest text-text-secondary">
+                            <tr>
+                              <th className="p-3 text-left"><input type="checkbox" checked={todos} onChange={e => setLinhasImport(ls => ls.map(l => ({ ...l, incluir: e.target.checked })))} /></th>
+                              <th className="p-3 text-left">Placa</th>
+                              <th className="p-3 text-left min-w-[200px]">Nome / Modelo</th>
+                              <th className="p-3 text-left">Marca</th>
+                              <th className="p-3 text-left">Tipo</th>
+                              <th className="p-3 text-left">Vínculo</th>
+                              <th className="p-3 text-left">Comb.</th>
+                              <th className="p-3 text-left">Renavam / Chassi</th>
+                              <th className="p-3 text-left">NF / Contrato</th>
+                              <th className="p-3 text-left">Aquisição</th>
+                              <th className="p-3 text-left">Situação</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {visiveis.map(l => (
+                              <tr key={l.placa} className={cn('border-t border-border', !l.incluir && 'opacity-40')}>
+                                <td className="p-3"><input type="checkbox" checked={l.incluir} onChange={e => setLinha(l.placa, { incluir: e.target.checked })} /></td>
+                                <td className="p-3 font-black whitespace-nowrap">{l.placa}</td>
+                                <td className="p-2">
+                                  <input value={l.nome} onChange={e => setLinha(l.placa, { nome: e.target.value })} placeholder={l.marca || 'Nome do veículo'}
+                                    className={cn('w-full bg-surface border rounded-lg px-3 py-2 outline-none focus:border-primary font-bold',
+                                      l.nome.trim() ? 'border-border' : 'border-amber-500/50')} />
+                                </td>
+                                <td className="p-3 whitespace-nowrap">{l.marca}</td>
+                                <td className="p-2">
+                                  <select value={l.tipo_veiculo} onChange={e => setLinha(l.placa, { tipo_veiculo: e.target.value })}
+                                    className="bg-surface border border-border rounded-lg px-2 py-2 outline-none focus:border-primary" title={`SIGA: ${l.tipo_siga}`}>
+                                    {Object.entries(TIPO_LABEL).map(([v, t]) => <option key={v} value={v}>{t}</option>)}
+                                  </select>
+                                </td>
+                                <td className="p-3 whitespace-nowrap">{l.tipo_propriedade === 'locado' ? 'Locado' : 'Patrimônio'}</td>
+                                <td className="p-3 capitalize">{l.combustivel}</td>
+                                <td className="p-3 whitespace-nowrap text-text-secondary">{l.renavam || '—'}{l.chassi && <><br />{l.chassi}</>}</td>
+                                <td className="p-3 whitespace-nowrap">{l.nf_contrato}</td>
+                                <td className="p-3 whitespace-nowrap">{dataBR(l.data_aquisicao)}{l.data_baixa && <><br /><span className="text-rose-600 font-bold">Baixa {dataBR(l.data_baixa)}</span></>}</td>
+                                <td className="p-3 whitespace-nowrap">
+                                  {l.existente
+                                    ? <span className="px-2 py-1 rounded-lg bg-sky-500/10 text-sky-700 font-bold">Atualiza</span>
+                                    : <span className="px-2 py-1 rounded-lg bg-emerald-500/10 text-emerald-700 font-bold">Novo</span>}
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </>
+                  )}
+                </div>
+
+                {linhasImport.length > 0 && (
+                  <div className="p-6 border-t border-border flex flex-wrap justify-between items-center gap-3 bg-surface-hover/30">
+                    <p className="text-xs text-text-secondary">
+                      {selecionados.length} selecionado(s){semNome ? ` · ${semNome} sem nome (serão salvos com a marca)` : ''}
+                    </p>
+                    <button onClick={handleConfirmarImport} disabled={!selecionados.length || salvandoImport}
+                      className="flex items-center gap-2 px-8 py-3.5 bg-primary text-white rounded-2xl text-xs font-black uppercase tracking-widest hover:bg-primary/90 disabled:opacity-40 transition-all">
+                      {salvandoImport && <Loader2 size={16} className="animate-spin" />}
+                      Importar {selecionados.length} veículo(s)
+                    </button>
+                  </div>
+                )}
+              </motion.div>
+            </div>
+          );
+        })()}
       </AnimatePresence>
     </div>
   );
