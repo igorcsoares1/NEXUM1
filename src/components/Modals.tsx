@@ -38,10 +38,10 @@ import { cn } from '../lib/utils';
 import { Contract, FuelRecord, DailyRecord, ChecklistItem, User, SystemSettings, Servidor, ChecklistConfirmation } from '../types';
 import { DEFAULT_CHECKLIST_DOCUMENTS } from '../constants';
 import { generateChecklistPDF, generateChecklistsReportPDF } from '../utils/pdf';
-import { fetchChecklistConfirmations, deleteChecklistConfirmation } from '../services/checklists';
+import { fetchChecklistConfirmations, deleteChecklistConfirmation, chaveDocumento } from '../services/checklists';
 import { PrintHeader } from './ui/PrintHeader';
 import { processCurrencyInput, parseCurrencyToNumber, formatCurrency, normalizeDateForInput, extractDateFromText } from '../utils/format';
-import { getContractTotalValue, getContractBalance } from '../services/contracts';
+import { getContractTotalValue, getContractBalance, pertenceAoContrato, encontrarContrato } from '../services/contracts';
 
 interface ModalsProps {
   showNewContractModal: boolean;
@@ -149,7 +149,6 @@ export const Modals = ({
   const [sharedId, setSharedId] = React.useState<string | null>(null);
   const [contractSearchTerm, setContractSearchTerm] = React.useState('');
   const [showContractDropdown, setShowContractDropdown] = React.useState(false);
-  const [confToDelete, setConfToDelete] = React.useState<string | null>(null);
 
   const filteredContractsForSelection = React.useMemo(() => {
     if (!contractSearchTerm) return contracts;
@@ -208,11 +207,12 @@ export const Modals = ({
   };
 
   const handleDeleteConf = async (id: string) => {
+    if (!window.confirm('Tem certeza que deseja excluir esta confirmação?')) return;
+    
     const success = await deleteChecklistConfirmation(id);
     if (success) {
       setConfirmations(prev => prev.filter(c => c.id !== id));
     }
-    setConfToDelete(null);
   };
 
   return (
@@ -413,8 +413,10 @@ export const Modals = ({
                 <button onClick={() => setShowNewContractModal(false)} className="p-2 hover:bg-surface-hover rounded-xl text-text-secondary"><X size={20} /></button>
               </div>
               <form onSubmit={handleSaveContract} className="flex-1 overflow-y-auto p-6 space-y-6 flex flex-col no-scrollbar">
-                {editingContract && parseCurrencyToNumber(newContractData.totalValue) > 0 && (() => {
-                  const total = parseCurrencyToNumber(newContractData.totalValue);
+                {editingContract && getContractTotalValue(newContractData as Contract) > 0 && (() => {
+                  const total = getContractTotalValue(newContractData as Contract);
+                  const original = parseCurrencyToNumber(newContractData.totalValue);
+                  const nAditivos = (newContractData.addendums || []).filter(a => parseCurrencyToNumber(a.value || '0') > 0).length;
                   const consumed = parseCurrencyToNumber(newContractData.consumption);
                   const percentage = total > 0 ? (consumed / total) * 100 : 0;
                   const balance = total - consumed;
@@ -472,8 +474,8 @@ export const Modals = ({
                             <span className="text-xs font-bold">{formatCurrency(consumed)}</span>
                           </div>
                           <div className="flex flex-col items-end">
-                            <span className="text-[10px] font-bold text-text-secondary uppercase opacity-60">Total</span>
-                            <span className="text-xs font-bold text-text-secondary">{formatCurrency(total)}</span>
+                            <span className="text-[10px] font-bold text-text-secondary uppercase opacity-60">Total{nAditivos ? ` (original + ${nAditivos} aditivo${nAditivos > 1 ? 's' : ''})` : ''}</span>
+                            <span className="text-xs font-bold text-text-secondary">{nAditivos ? `${formatCurrency(original)} + ${formatCurrency(total - original)} = ` : ''}{formatCurrency(total)}</span>
                           </div>
                         </div>
                       </div>
@@ -513,8 +515,48 @@ export const Modals = ({
                       required 
                     />
                   </div>
-                  <div className="space-y-1.5"><label className="text-[10px] font-bold text-text-secondary uppercase tracking-wider ml-1">Valor Total (R$)</label><input type="text" className="w-full bg-surface-hover border border-border rounded-xl px-4 py-3 outline-none focus:border-primary transition-all text-sm font-bold shadow-inner" value={newContractData.totalValue} onChange={(e) => setNewContractData({ ...newContractData, totalValue: processCurrencyInput(e.target.value) })} required /></div>
-                  <div className="space-y-1.5"><label className="text-[10px] font-bold text-text-secondary uppercase tracking-wider ml-1">Consumo Atual (R$)</label><input type="text" className="w-full bg-surface-hover border border-border rounded-xl px-4 py-3 outline-none focus:border-primary transition-all text-sm font-bold shadow-inner" value={newContractData.consumption} onChange={(e) => setNewContractData({ ...newContractData, consumption: processCurrencyInput(e.target.value) })} /></div>
+                  <div className="space-y-1.5"><label className="text-[10px] font-bold text-text-secondary uppercase tracking-wider ml-1">Valor Original do Contrato (R$)</label><input type="text" className="w-full bg-surface-hover border border-border rounded-xl px-4 py-3 outline-none focus:border-primary transition-all text-sm font-bold shadow-inner" value={newContractData.totalValue} onChange={(e) => setNewContractData({ ...newContractData, totalValue: processCurrencyInput(e.target.value) })} required /></div>
+                  <div className="space-y-1.5"><label className="text-[10px] font-bold text-text-secondary uppercase tracking-wider ml-1">Consumo Acumulado (R$)</label><input type="text" className="w-full bg-surface-hover border border-border rounded-xl px-4 py-3 outline-none focus:border-primary transition-all text-sm font-bold shadow-inner" value={newContractData.consumption} onChange={(e) => setNewContractData({ ...newContractData, consumption: processCurrencyInput(e.target.value) })} /><p className="text-[10px] text-text-secondary ml-1">Tudo o que já foi empenhado/pago desde a assinatura, incluindo os exercícios anteriores. É o "Débito" total do Acompanhamento de Saldo.</p></div>
+                </div>
+
+                {/* Aditivos */}
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h4 className="text-[10px] font-black text-text-secondary uppercase tracking-widest">Aditivos</h4>
+                      <p className="text-[10px] text-text-secondary">O valor de cada aditivo soma ao total. Em prorrogação, atualize também a Data de Vencimento.</p>
+                    </div>
+                    <button type="button"
+                      onClick={() => setNewContractData({ ...newContractData, addendums: [...(newContractData.addendums || []), { date: '', number: '', description: '', value: '' }] })}
+                      className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-primary/10 text-primary text-[10px] font-black uppercase tracking-widest hover:bg-primary/20">
+                      <Plus size={14} /> Aditivo
+                    </button>
+                  </div>
+                  {(newContractData.addendums || []).length === 0 && (
+                    <p className="text-xs text-text-secondary italic">Nenhum aditivo cadastrado.</p>
+                  )}
+                  {(newContractData.addendums || []).map((a, i) => {
+                    const mudar = (campo: string, valor: string) => setNewContractData({
+                      ...newContractData,
+                      addendums: (newContractData.addendums || []).map((x, j) => j === i ? { ...x, [campo]: valor } : x)
+                    });
+                    const campo = "w-full bg-surface-hover border border-border rounded-xl px-3 py-2.5 outline-none focus:border-primary text-sm font-bold";
+                    return (
+                      <div key={i} className="grid grid-cols-2 md:grid-cols-[1fr_1fr_1.2fr_auto] gap-2 items-end p-3 rounded-2xl border border-border bg-surface-hover/30">
+                        <label className="space-y-1"><span className="text-[9px] font-bold text-text-secondary uppercase">Nº do aditivo</span>
+                          <input className={campo} placeholder="001/2026" value={a.number || ''} onChange={e => mudar('number', e.target.value)} /></label>
+                        <label className="space-y-1"><span className="text-[9px] font-bold text-text-secondary uppercase">Data</span>
+                          <input type="date" className={campo} value={normalizeDateForInput(a.date)} onChange={e => mudar('date', e.target.value)} /></label>
+                        <label className="space-y-1"><span className="text-[9px] font-bold text-text-secondary uppercase">Valor (R$)</span>
+                          <input className={campo} placeholder="0,00 se só prorrogou" value={a.value || ''} onChange={e => mudar('value', processCurrencyInput(e.target.value))} /></label>
+                        <button type="button" aria-label="Remover aditivo"
+                          onClick={() => setNewContractData({ ...newContractData, addendums: (newContractData.addendums || []).filter((_, j) => j !== i) })}
+                          className="p-2.5 rounded-xl text-text-secondary hover:text-rose-500 hover:bg-rose-500/10 justify-self-end"><Trash2 size={16} /></button>
+                        <label className="space-y-1 col-span-2 md:col-span-4"><span className="text-[9px] font-bold text-text-secondary uppercase">Descrição</span>
+                          <input className={campo} placeholder="Ex.: prorrogação por 12 meses, até 20/03/2027" value={a.description || ''} onChange={e => mudar('description', e.target.value)} /></label>
+                      </div>
+                    );
+                  })}
                 </div>
 
                 {editingContract && (
@@ -522,12 +564,12 @@ export const Modals = ({
                     <h4 className="text-[10px] font-black text-text-secondary uppercase tracking-widest mb-4">Processos Associados</h4>
                     <div className="space-y-2">
                       {checklistRecords.filter(c => 
-                        c.contractNumber?.trim().toLowerCase() === editingContract.number?.trim().toLowerCase() ||
+                        pertenceAoContrato(newContractData, c.contractNumber) || c.contractNumber?.trim().toLowerCase() === editingContract.number?.trim().toLowerCase() ||
                         editingContract.number?.trim().toLowerCase().includes((c.contractNumber || '').replace(/^(N[ºo].?\s*|Contrato\s*)/i, '').trim().toLowerCase()) && c.contractNumber?.length > 2
                       ).length > 0 ? (
                         checklistRecords
                           .filter(c => 
-                            c.contractNumber?.trim().toLowerCase() === editingContract.number?.trim().toLowerCase() ||
+                            pertenceAoContrato(newContractData, c.contractNumber) || c.contractNumber?.trim().toLowerCase() === editingContract.number?.trim().toLowerCase() ||
                             editingContract.number?.trim().toLowerCase().includes((c.contractNumber || '').replace(/^(N[ºo].?\s*|Contrato\s*)/i, '').trim().toLowerCase()) && c.contractNumber?.length > 2
                           )
                           .map((c) => (
@@ -538,12 +580,7 @@ export const Modals = ({
                               </div>
                               <div className="text-right">
                                 <span className="text-xs font-bold text-rose-500">{c.invoiceValue}</span>
-                                <p className="text-[8px] font-black uppercase tracking-widest text-text-secondary">
-                                  {c.status === 'concluido' ? 'Concluído' : 
-                                   c.status === 'em_analise' ? 'Em Análise' : 
-                                   c.status === 'atencao' ? 'Atenção' : 
-                                   c.status === 'pendente' ? 'Pendente' : c.status}
-                                </p>
+                                <p className="text-[8px] font-black uppercase tracking-widest text-text-secondary">{c.status}</p>
                               </div>
                             </div>
                           ))
@@ -821,11 +858,11 @@ export const Modals = ({
                     <label className="text-[10px] font-black text-text-secondary uppercase tracking-widest ml-1 flex justify-between">
                       <span>Valor da Nota Fiscal</span>
                       {(() => {
-                        const stripped = (newChecklistData.contractNumber || '').replace(/^(N[ºo].?\s*|Contrato\s*)/i, '').trim();
-                        const contract = contracts.find(c => 
-                          c.number?.trim().toLowerCase() === newChecklistData.contractNumber?.trim().toLowerCase() ||
-                          c.number?.trim().toLowerCase().includes(stripped.toLowerCase()) && stripped.length > 2
-                        );
+                        // Número exato (principal ou aditivo) + fornecedor para desempatar números repetidos.
+                        const { contrato: contract, repetidos } = encontrarContrato(contracts, newChecklistData.contractNumber, newChecklistData.vendor);
+                        if (!contract && repetidos > 1) {
+                          return <span className="text-amber-600 flex items-center gap-1"><AlertTriangle size={10} /> Nº repetido em {repetidos} contratos: escolha o fornecedor</span>;
+                        }
                         if (contract) {
                           const balance = getContractBalance(contract);
                           const currentInvoice = parseCurrencyToNumber(newChecklistData.invoiceValue || '0');
@@ -833,7 +870,7 @@ export const Modals = ({
                           if (currentInvoice > balance && balance > 0) {
                             return <span className="text-rose-500 flex items-center gap-1"><AlertTriangle size={10} /> Excede Saldo ({formatCurrency(balance)})</span>;
                           }
-                          return <span className="text-emerald-500">Saldo Disp: {formatCurrency(balance)}</span>;
+                          return <span className="text-emerald-500" title={`${contract.number} · ${contract.vendor}`}>Saldo Disp: {formatCurrency(balance)}</span>;
                         }
                         return null;
                       })()}
@@ -900,6 +937,16 @@ export const Modals = ({
                     </button>
                   </div>
 
+                  {(newChecklistData.items || []).length > 0 && (() => {
+                    const total = newChecklistData.items.length;
+                    const ok = newChecklistData.items.filter((i: any) => i.checked).length;
+                    return (
+                      <p className={cn("text-[11px] font-bold ml-1", ok === total ? "text-emerald-600" : "text-blue-600")}>
+                        {ok}/{total} documentos conferidos · será salvo como {ok === total ? '"Concluído"' : '"Em análise"'}
+                      </p>
+                    );
+                  })()}
+
                   {/* Lista de Itens Atuais */}
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <AnimatePresence mode="popLayout">
@@ -958,34 +1005,36 @@ export const Modals = ({
                     </AnimatePresence>
                   </div>
 
-                  {/* Sugestões Rápidas */}
-                  <div className="space-y-4 bg-surface-hover/20 rounded-[2rem] p-5 border border-border/40">
-                    <div className="flex items-center gap-2 px-1">
-                      <div className="w-1.5 h-4 bg-primary/40 rounded-full" />
-                      <p className="text-[10px] font-black uppercase tracking-widest text-text-secondary">Sugestões Rápidas</p>
-                    </div>
-                    <div className="flex flex-wrap gap-2">
-                      {DEFAULT_CHECKLIST_DOCUMENTS.filter(docName => 
-                        !newChecklistData.items?.some((i: any) => i.label === docName)
-                      ).map((docName) => (
-                        <button
-                          key={docName}
-                          type="button"
-                          onClick={() => {
-                            const newItem = { id: crypto.randomUUID(), label: docName, checked: false };
-                            setNewChecklistData({ ...newChecklistData, items: [...(newChecklistData.items || []), newItem] });
-                          }}
-                          className="flex items-center gap-2.5 px-4 py-2.5 rounded-xl border border-border/60 bg-surface text-[10px] font-bold uppercase tracking-tight text-text-secondary hover:border-primary hover:text-primary hover:bg-primary/5 transition-all active:scale-95 shadow-sm"
-                        >
-                          <Plus size={14} />
-                          {docName}
-                        </button>
-                      ))}
-                      {(!DEFAULT_CHECKLIST_DOCUMENTS.some(docName => !newChecklistData.items?.some((i: any) => i.label === docName))) && (
-                        <p className="text-[10px] font-bold text-text-secondary italic px-2">Todas as sugestões padrão foram adicionadas.</p>
-                      )}
-                    </div>
-                  </div>
+                  {/* Sugestões Rápidas: só documentos que ainda não estão na lista (compara sem acento/caixa/"negativa") */}
+                  {(() => {
+                    const naLista = new Set((newChecklistData.items || []).map((i: any) => chaveDocumento(i.label)));
+                    const faltam = DEFAULT_CHECKLIST_DOCUMENTS.filter(docName => !naLista.has(chaveDocumento(docName)));
+                    if (!faltam.length) return null;
+                    return (
+                      <div className="space-y-4 bg-surface-hover/20 rounded-[2rem] p-5 border border-border/40">
+                        <div className="flex items-center gap-2 px-1">
+                          <div className="w-1.5 h-4 bg-primary/40 rounded-full" />
+                          <p className="text-[10px] font-black uppercase tracking-widest text-text-secondary">Adicionar documento</p>
+                        </div>
+                        <div className="flex flex-wrap gap-2">
+                          {faltam.map((docName) => (
+                            <button
+                              key={docName}
+                              type="button"
+                              onClick={() => {
+                                const newItem = { id: crypto.randomUUID(), label: docName, checked: false };
+                                setNewChecklistData({ ...newChecklistData, items: [...(newChecklistData.items || []), newItem] });
+                              }}
+                              className="flex items-center gap-2.5 px-4 py-2.5 rounded-xl border border-border/60 bg-surface text-[10px] font-bold uppercase tracking-tight text-text-secondary hover:border-primary hover:text-primary hover:bg-primary/5 transition-all active:scale-95 shadow-sm"
+                            >
+                              <Plus size={14} />
+                              {docName}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  })()}
 
                   {/* Adição Manual */}
                   <div className="flex gap-2 bg-background p-2 rounded-2xl border border-border/40 shadow-inner">
@@ -1771,7 +1820,7 @@ export const Modals = ({
                             </div>
                             {canDelete && (
                               <button 
-                                onClick={() => setConfToDelete(conf.id)}
+                                onClick={() => handleDeleteConf(conf.id)}
                                 className="p-2 text-text-secondary/60 sm:text-text-secondary/40 hover:text-rose-500 hover:bg-rose-500/10 rounded-lg transition-all opacity-100 sm:opacity-0 sm:group-hover/conf:opacity-100"
                                 title="Excluir Confirmação"
                               >
@@ -2178,39 +2227,6 @@ export const Modals = ({
                     Cancelar
                   </button>
                 </div>
-              </div>
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
-      {/* Local Delete Confirmation Modal for Checklist Confirmations */}
-      <AnimatePresence>
-        {confToDelete && (
-          <div className="fixed inset-0 z-[300] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
-            <motion.div 
-              initial={{ opacity: 0, scale: 0.95, y: 20 }} 
-              animate={{ opacity: 1, scale: 1, y: 0 }} 
-              exit={{ opacity: 0, scale: 0.95, y: 20 }} 
-              className="bg-background w-full max-w-sm relative z-10 text-center p-8 rounded-[32px] shadow-2xl border border-border"
-            >
-              <div className="w-16 h-16 bg-rose-500/10 rounded-full flex items-center justify-center text-rose-500 mx-auto mb-6 shrink-0">
-                <Trash2 size={32} />
-              </div>
-              <h3 className="text-xl font-bold mb-2">Excluir Confirmação</h3>
-              <p className="text-text-secondary text-sm mb-8">Tem certeza que deseja excluir esta confirmação de recebimento? Esta ação não pode ser desfeita.</p>
-              <div className="flex flex-col gap-2">
-                <button 
-                  onClick={() => handleDeleteConf(confToDelete)} 
-                  className="w-full bg-rose-500 hover:bg-rose-600 text-white py-4 rounded-xl font-black uppercase tracking-widest text-xs transition-all shadow-xl shadow-rose-500/20"
-                >
-                  Sim, Excluir
-                </button>
-                <button 
-                  onClick={() => setConfToDelete(null)} 
-                  className="w-full py-4 rounded-xl font-black uppercase tracking-widest text-xs text-text-secondary hover:bg-surface-hover transition-all"
-                >
-                  Cancelar
-                </button>
               </div>
             </motion.div>
           </div>

@@ -171,8 +171,7 @@ export default function App() {
     fetchDailyRecords,
     fetchServidores,
     fetchUsers,
-    fetchChecklists,
-    fetchProtocols
+    fetchChecklists
   } = useSupabase({ isAuthReady, currentUser, isLoggedIn });
 
   const {
@@ -1228,12 +1227,7 @@ export default function App() {
       const target = checklistRecords.find(c => c.id === checklistId);
       if (target) {
         // Determinando novo status com a mesma lógica do serviço para sincronizar UI imediata
-        let newStatus = target.status;
-        const actionLower = action.toLowerCase();
-        if (actionLower.includes('análise')) newStatus = 'em_analise';
-        else if (actionLower.includes('autorizado') || actionLower.includes('pagamento') || actionLower.includes('pago') || actionLower.includes('concluído') || actionLower.includes('arquivado')) newStatus = 'concluido';
-        else if (actionLower.includes('correção') || actionLower.includes('pendente')) newStatus = 'pendente';
-        else if (actionLower.includes('urgente') || actionLower.includes('atraso') || actionLower.includes('prioridade')) newStatus = 'atencao';
+        const newStatus = checklistService.statusPorTramitacao(action, target.status, target.items);
 
         const updatedHistory = [{ 
           date: format(new Date(), 'dd/MM/yyyy HH:mm'), 
@@ -1427,8 +1421,6 @@ export default function App() {
         if (error) throw error;
         fetchContracts();
         logActivity(currentUser, 'Exclusão de Contrato', `Excluiu contrato ID: ${itemToDelete}`);
-      } else if (deleteType === 'Protocolo' && itemToDelete) {
-        await handleActualDeleteProtocol(itemToDelete);
       } else if (deleteType === 'fuel' && itemToDelete) {
         const { error } = await supabase.from('fuelRecords').delete().eq('id', itemToDelete);
         if (error) throw error;
@@ -1462,7 +1454,7 @@ export default function App() {
           if (checklist.contractNumber && checklist.invoiceValue) {
             const invoiceVal = parseCurrencyToNumber(checklist.invoiceValue);
             if (invoiceVal > 0) {
-              await checklistService.updateContractConsumption(checklist.contractNumber, -invoiceVal, checklist.prefeituraId, addNotification);
+              await checklistService.updateContractConsumption(checklist.contractNumber, -invoiceVal, checklist.prefeituraId, addNotification, checklist.vendor);
             }
           }
 
@@ -1828,7 +1820,6 @@ export default function App() {
           `Registrou novo documento: ${protocol.subject}`
         );
         addNotification("Sucesso", "Documento registrado com sucesso!", "success");
-        fetchProtocols();
       }
     } catch (error: any) {
       console.error("Erro ao salvar protocolo:", error);
@@ -1837,15 +1828,7 @@ export default function App() {
   };
 
   const handleDeleteProtocol = async (id: string) => {
-    if (!currentUser) return;
-    
-    setItemToDelete(id);
-    setDeleteType('Protocolo');
-    setShowDeleteConfirm(true);
-  };
-
-  // Função interna para confirmar a exclusão de fato
-  const handleActualDeleteProtocol = async (id: string) => {
+    if (!currentUser || !window.confirm("Tem certeza que deseja excluir este documento?")) return;
     try {
       const { error } = await supabase
         .from('protocols')
@@ -1860,7 +1843,6 @@ export default function App() {
         `Excluiu um documento`
       );
       addNotification("Sucesso", "Documento excluído com sucesso!", "success");
-      fetchProtocols();
     } catch (error: any) {
       console.error("Erro ao excluir protocolo:", error);
       addNotification("Erro", "Falha ao excluir documento.", "error");
@@ -1981,27 +1963,6 @@ export default function App() {
     window.print();
   };
 
-  const [isRefreshingDashboard, setIsRefreshingDashboard] = useState(false);
-
-  const handleRefreshAll = async () => {
-    setIsRefreshingDashboard(true);
-    try {
-      await Promise.all([
-        fetchContracts(),
-        fetchFuelRecords(),
-        fetchDailyRecords(),
-        fetchChecklists(),
-        fetchUsers(),
-        fetchServidores()
-      ]);
-      addNotification("Sucesso", "Dashboard atualizado!", "success");
-    } catch (e) {
-      addNotification("Erro", "Falha ao atualizar dados.", "error");
-    } finally {
-      setIsRefreshingDashboard(false);
-    }
-  };
-
   const renderView = () => {
     const hasPermission = (view: View) => {
       if (!currentUser) return false;
@@ -2059,8 +2020,6 @@ export default function App() {
             auditItems={auditItems}
             addNotification={addNotification}
             systemSettings={systemSettings}
-            onRefresh={handleRefreshAll}
-            isRefreshing={isRefreshingDashboard}
           />
         );
       case 'combustivel':
@@ -2070,6 +2029,7 @@ export default function App() {
             handlePrint={() => generateFuelPDF(fuelRecords, systemSettings)}
             handleExportCSV={handleExportCSVLocal}
             handleImportFuel={handleImportFuelLocal}
+            onSigaImportado={() => { fetchFuelRecords(); addNotification('Sucesso', 'Consumo do SIGA importado.', 'success'); }}
             isImporting={isImporting}
             isFuelSelectionMode={isFuelSelectionMode}
             setIsFuelSelectionMode={setIsFuelSelectionMode}
@@ -2182,7 +2142,6 @@ export default function App() {
             setShowDeleteConfirm={setShowDeleteConfirm}
             confirmations={confirmations}
             currentUser={currentUser!}
-            addNotification={addNotification}
           />
         );
       case 'contratos':
@@ -2266,19 +2225,19 @@ export default function App() {
           />
         );
       case 'relatorio_executivo':
-        return <RelatorioExecutivo addNotification={addNotification} />;
+        return <RelatorioExecutivo />;
       case 'protocolo-entrada':
-        return <Protocolo type="entrada" currentUser={currentUser} protocols={protocols} onSave={handleSaveProtocol} onDelete={handleDeleteProtocol} addNotification={addNotification} />;
+        return <Protocolo type="entrada" currentUser={currentUser} protocols={protocols} onSave={handleSaveProtocol} onDelete={handleDeleteProtocol} />;
       case 'protocolo-saida':
-        return <Protocolo type="saida" currentUser={currentUser} protocols={protocols} onSave={handleSaveProtocol} onDelete={handleDeleteProtocol} addNotification={addNotification} />;
+        return <Protocolo type="saida" currentUser={currentUser} protocols={protocols} onSave={handleSaveProtocol} onDelete={handleDeleteProtocol} />;
       case 'protocolo-processos':
-        return <Protocolo type="processos" currentUser={currentUser} protocols={protocols} onSave={handleSaveProtocol} onDelete={handleDeleteProtocol} addNotification={addNotification} />;
+        return <Protocolo type="processos" currentUser={currentUser} protocols={protocols} onSave={handleSaveProtocol} onDelete={handleDeleteProtocol} />;
       case 'protocolo-tramitacao':
-        return <Protocolo type="tramitacao" currentUser={currentUser} protocols={protocols} onSave={handleSaveProtocol} onDelete={handleDeleteProtocol} addNotification={addNotification} />;
+        return <Protocolo type="tramitacao" currentUser={currentUser} protocols={protocols} onSave={handleSaveProtocol} onDelete={handleDeleteProtocol} />;
       case 'protocolo-pendencias':
-        return <Protocolo type="pendencias" currentUser={currentUser} protocols={protocols} onSave={handleSaveProtocol} onDelete={handleDeleteProtocol} addNotification={addNotification} />;
+        return <Protocolo type="pendencias" currentUser={currentUser} protocols={protocols} onSave={handleSaveProtocol} onDelete={handleDeleteProtocol} />;
       case 'protocolo-arquivos':
-        return <Protocolo type="arquivos" currentUser={currentUser} protocols={protocols} onSave={handleSaveProtocol} onDelete={handleDeleteProtocol} addNotification={addNotification} />;
+        return <Protocolo type="arquivos" currentUser={currentUser} protocols={protocols} onSave={handleSaveProtocol} onDelete={handleDeleteProtocol} />;
       case 'manual':
         return <Manual />;
       case 'configuracoes':

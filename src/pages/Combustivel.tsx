@@ -24,6 +24,7 @@ import { StatCard } from '../components/ui/StatCard';
 import { PaginationControls } from '../components/ui/PaginationControls';
 import { PrintHeader } from '../components/ui/PrintHeader';
 import { formatCurrency, parseCurrencyToNumber } from '../utils/format';
+import { ImportarCombustivelSiga } from '../components/ImportarCombustivelSiga';
 
 interface CombustivelProps {
   currentUser: User;
@@ -56,6 +57,7 @@ interface CombustivelProps {
   canDelete: boolean;
   handleEditFuel: (record: FuelRecord) => void;
   handleDeleteFuel: (id: string) => void;
+  onSigaImportado?: () => void;
 }
 
 const Combustivel = ({
@@ -88,7 +90,8 @@ const Combustivel = ({
   canEdit,
   canDelete,
   handleEditFuel,
-  handleDeleteFuel
+  handleDeleteFuel,
+  onSigaImportado
 }: CombustivelProps) => {
   // FIX: Ref para o input de arquivo
   const fileInputRef = React.useRef<HTMLInputElement>(null);
@@ -218,6 +221,9 @@ const Combustivel = ({
                     disabled={isImporting}
                   />
                 </label>
+              )}
+              {canAdd && (
+                <ImportarCombustivelSiga compacto currentUser={currentUser} fuelRecords={fuelRecords} onImportado={() => onSigaImportado?.()} />
               )}
             </div>
           </div>
@@ -463,6 +469,9 @@ const Combustivel = ({
                   disabled={isImporting}
                 />
               </label>
+            )}
+            {canAdd && (
+              <ImportarCombustivelSiga currentUser={currentUser} fuelRecords={fuelRecords} onImportado={() => onSigaImportado?.()} />
             )}
             {canEdit && (
               <button

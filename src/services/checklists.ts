@@ -2,50 +2,30 @@ import { format } from 'date-fns';
 import { supabase } from '../lib/supabase';
 import { ChecklistItem, User, ChecklistConfirmation, Contract } from '../types';
 import { parseCurrencyToNumber, formatCurrency } from '../utils/format';
-import { getContractTotalValue } from './contracts';
+import { getContractTotalValue, encontrarContrato } from './contracts';
 import { markRecibosByProcessNumberAsDeleted } from './recibos';
 
 const handleError = (error: any, ctx: string) => console.error(`Erro em ${ctx}:`, error?.message);
 
-export const updateContractConsumption = async (contractNumber: string, valueChange: number, prefeituraId?: string, addNotification?: (title: string, message: string, type: any) => void) => {
+export const updateContractConsumption = async (contractNumber: string, valueChange: number, prefeituraId?: string, addNotification?: (title: string, message: string, type: any) => void, vendor?: string) => {
   if (!contractNumber || valueChange === 0) return;
-  
+
   const cleanNumber = contractNumber.trim();
-  console.log(`🔍 [CONTRATO] Tentando atualizar consumo: ${cleanNumber} | Alteração: R$ ${valueChange.toFixed(2)} | Prefeitura: ${prefeituraId || 'Não informada'}`);
-  
   try {
-    const stripped = cleanNumber.replace(/^(N[ºo].?\s*|Contrato\s*)/i, '').trim();
-    
     let query = supabase
       .from('contracts')
-      .select('id, number, consumption, totalValue, prefeituraId, addendums');
-
-    if (prefeituraId) {
-      query = query.eq('prefeituraId', prefeituraId);
-    }
-
-    // Primeiro tenta busca exata
-    let { data: contract, error: fetchError } = await query.ilike('number', cleanNumber).maybeSingle();
-
-    // Se não achar, tenta busca flexível (contém o número sem prefixos)
-    if (!contract && !fetchError) {
-      console.log(`🔎 Tentando busca flexível para: %${stripped}%`);
-      const { data: fuzzyContract, error: fuzzyError } = await supabase
-        .from('contracts')
-        .select('id, number, consumption, totalValue, prefeituraId, addendums')
-        .eq('prefeituraId', prefeituraId)
-        .ilike('number', `%${stripped}%`)
-        .maybeSingle(); // Se houver múltiplos, maybeSingle retornará erro, o que é seguro
-      
-      if (fuzzyContract) {
-        contract = fuzzyContract;
-        console.log(`🎯 Contrato encontrado via busca flexível: ${contract.number}`);
-      }
-      fetchError = fuzzyError;
-    }
-
+      .select('id, number, vendor, consumption, totalValue, prefeituraId, addendums');
+    if (prefeituraId) query = query.eq('prefeituraId', prefeituraId);
+    const { data: todos, error: fetchError } = await query;
     if (fetchError) {
       console.error("❌ Erro ao buscar contrato:", fetchError);
+      return;
+    }
+
+    // Número exato (principal ou aditivo); se o número se repetir, o fornecedor desempata.
+    const { contrato: contract, repetidos } = encontrarContrato(todos || [], cleanNumber, vendor);
+    if (!contract && repetidos > 1) {
+      addNotification?.("Atenção", `Há ${repetidos} contratos com o nº ${cleanNumber} e não foi possível saber qual é o deste processo. O saldo não foi abatido: confira o fornecedor.`, "warning");
       return;
     }
 
@@ -154,14 +134,11 @@ export const handleAddTramitation = async (
   const currentHistory = Array.isArray(targetChecklist.history) ? targetChecklist.history : [];
   const updatedHistory = [newStep, ...currentHistory];
 
-  // Map action to status
-  let newStatus = targetChecklist.status;
-  const actionLower = action.toLowerCase();
-  
-  if (actionLower.includes('análise')) newStatus = 'em_analise';
-  else if (actionLower.includes('autorizado') || actionLower.includes('pagamento') || actionLower.includes('pago') || actionLower.includes('concluído') || actionLower.includes('arquivado')) newStatus = 'concluido';
-  else if (actionLower.includes('correção') || actionLower.includes('pendente')) newStatus = 'pendente';
-  else if (actionLower.includes('urgente') || actionLower.includes('atraso') || actionLower.includes('prioridade')) newStatus = 'atencao';
+  // Map action to status (só conclui com todos os documentos marcados)
+  const newStatus = statusPorTramitacao(action, targetChecklist.status, targetChecklist.items);
+  const pendentes = documentosPendentes(targetChecklist.items);
+  if (newStatus === 'em_analise' && pendentes.length && !/an[áa]lise/i.test(action))
+    addNotification("Documentos pendentes", `O processo foi tramitado, mas continua "Em análise": faltam ${pendentes.length} documento(s) (${pendentes.map(i => i.label).join('; ')}).`, "warning");
 
   try {
     const updateData: any = {
@@ -209,6 +186,30 @@ export const handleAddTramitation = async (
     addNotification("Erro", "Erro ao registrar movimentação.", "error");
     return false;
   }
+};
+
+/** Chave para comparar nomes de documentos ("Certidão de Regularidade do FGTS" = "CERTIDÃO NEGATIVA DE REGULARIDADE (FGTS)"). */
+export const chaveDocumento = (label: string) =>
+  (label || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .split(' ').filter(w => w && !['de', 'da', 'do', 'das', 'dos', 'e', 'negativa', 'comprovante'].includes(w))
+    .join(' ');
+
+export const documentosPendentes = (items?: { label: string; checked: boolean }[]) =>
+  (items || []).filter(i => !i.checked);
+
+/**
+ * Status após uma tramitação. Ações de conclusão (pagamento, autorizado, arquivado...) só concluem
+ * se todos os documentos estiverem marcados; senão o processo fica "em análise".
+ */
+export const statusPorTramitacao = (action: string, atual: ChecklistItem['status'], items?: { label: string; checked: boolean }[]): ChecklistItem['status'] => {
+  const a = action.toLowerCase();
+  if (a.includes('análise') || a.includes('analise')) return 'em_analise';
+  if (a.includes('autorizado') || a.includes('pagamento') || a.includes('pago') || a.includes('concluído') || a.includes('concluido') || a.includes('arquivado'))
+    return documentosPendentes(items).length ? 'em_analise' : 'concluido';
+  if (a.includes('correção') || a.includes('correcao') || a.includes('pendente')) return 'pendente';
+  if (a.includes('urgente') || a.includes('atraso') || a.includes('prioridade')) return 'atencao';
+  return atual;
 };
 
 export const DEFAULT_CHECKLIST_ITEMS = [
@@ -332,24 +333,24 @@ export const handleSaveChecklist = async (
         if (oldVal !== newVal) {
           const difference = newVal - oldVal;
           console.log(`📝 Editando: ${newContr} | Diferença: R$ ${difference.toFixed(2)}`);
-          await updateContractConsumption(newContr, difference, pId, addNotification);
+          await updateContractConsumption(newContr, difference, pId, addNotification, newChecklistData.vendor);
         }
       } else {
         // Contrato diferente: devolver antigo + abater novo
         if (oldContr) {
           console.log(`⬅️ Devolvendo ${oldContr}: -R$ ${oldVal.toFixed(2)}`);
-          await updateContractConsumption(oldContr, -oldVal, pId, addNotification);
+          await updateContractConsumption(oldContr, -oldVal, pId, addNotification, editingChecklist.vendor);
         }
         if (newContr && newVal > 0) {
           console.log(`➡️ Abatendo ${newContr}: -R$ ${newVal.toFixed(2)}`);
-          await updateContractConsumption(newContr, newVal, pId, addNotification);
+          await updateContractConsumption(newContr, newVal, pId, addNotification, newChecklistData.vendor);
         }
       }
     } else {
       // NOVO CHECKLIST: Abater imediatamente
       if (newContr && newVal > 0) {
         console.log(`✅ NOVO: ${newContr} | Abatendo: -R$ ${newVal.toFixed(2)}`);
-        await updateContractConsumption(newContr, newVal, pId, addNotification);
+        await updateContractConsumption(newContr, newVal, pId, addNotification, newChecklistData.vendor);
       }
     }
     

@@ -132,7 +132,10 @@ export interface Contract {
   modality?: string;
   signatureDate?: string;
   category?: string;
-  addendums?: { date: string; description: string; value?: string }[];
+  /** Aditivos: o valor soma ao total do contrato; o número (ex.: 001/2026) também identifica os pagamentos. */
+  addendums?: { date: string; description: string; value?: string; number?: string }[];
+  /** Consumo lançado fora do NEXUM (histórico anterior). O consumo = base + processos de pagamento do NEXUM. */
+  consumptionBase?: string;
 }
 
 export interface TramitationStep {

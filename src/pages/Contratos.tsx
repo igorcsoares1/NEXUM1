@@ -8,6 +8,7 @@ import { ptBR } from 'date-fns/locale';
 import { cn } from '../lib/utils';
 import { formatCurrency, parseCurrencyToNumber, safeFormatDate, safeGetDaysRemaining } from '../utils/format';
 import { Contract, User } from '../types';
+import { getContractTotalValue } from '../services/contracts';
 import { PaginationControls } from '../components/ui/PaginationControls';
 import { PrintHeader } from '../components/ui/PrintHeader';
 import { StatCard } from '../components/ui/StatCard';
@@ -289,7 +290,7 @@ interface ContratosProps {
                 const statusCfg = getStatusConfig(contract.status);
                 const daysRemaining = safeGetDaysRemaining(contract.expiryDate);
                 const consumptionValue = parseCurrency(contract.consumption);
-                const totalValue = parseCurrency(contract.totalValue);
+                const totalValue = getContractTotalValue(contract);
                 const consumptionPercentage = totalValue > 0 ? (consumptionValue / totalValue) * 100 : 0;
                 const isHighConsumption = consumptionPercentage > 90;
 
@@ -599,7 +600,7 @@ interface ContratosProps {
               {paginatedContracts.map((contract, idx) => {
                 const statusCfg = getStatusConfig(contract.status);
                 const consumptionValue = parseCurrency(contract.consumption);
-                const totalValue = parseCurrency(contract.totalValue);
+                const totalValue = getContractTotalValue(contract);
                 const consumptionPercentage = totalValue > 0 ? (consumptionValue / totalValue) * 100 : 0;
                 
                 return (
