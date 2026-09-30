@@ -158,7 +158,7 @@ const Login = ({
       {/* FOOTER */}
       <div className="absolute bottom-8 text-center w-full">
         <p className="text-[10px] text-slate-400 font-bold uppercase tracking-[0.4em]">
-          © 2024 NEXUM TECNOLOGIA • V.2.4.0
+          © 2026 NEXUM TECNOLOGIA • V.2.4.0
         </p>
       </div>
 
