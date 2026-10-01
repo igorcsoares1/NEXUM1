@@ -158,6 +158,7 @@ export default function App() {
     systemSettings,
     protocols,
     confirmations,
+    notasFiscais,
     setUsers,
     setContracts,
     setChecklistRecords,
@@ -171,7 +172,8 @@ export default function App() {
     fetchDailyRecords,
     fetchServidores,
     fetchUsers,
-    fetchChecklists
+    fetchChecklists,
+    fetchNotasFiscais
   } = useSupabase({ isAuthReady, currentUser, isLoggedIn });
 
   const {
@@ -1055,31 +1057,54 @@ export default function App() {
     handleExportCSV(filteredFuelRecords, 'abastecimentos');
   };
 
-  const handleExportPDF = async (reportName: string) => {
+  const handleExportPDF = async (reportName: string, filters?: { startDate: string, endDate: string }) => {
     setIsExportingPDF(true);
     
     try {
+      const filterByDate = (dateStr: string) => {
+        if (!filters?.startDate || !filters?.endDate) return true;
+        const d = dateStr.substring(0, 10);
+        return d >= filters.startDate && d <= filters.endDate;
+      };
+
+      const getPeriodText = (titleBase: string) => {
+        if (!filters?.startDate || !filters?.endDate) return titleBase;
+        return `${titleBase} (${format(new Date(filters.startDate + 'T12:00:00'), 'dd/MM/yy')} - ${format(new Date(filters.endDate + 'T12:00:00'), 'dd/MM/yy')})`;
+      };
+
       // Usar geradores estruturados para tópicos específicos
       if (reportName === 'checklists') {
-        generateChecklistsReportPDF(checklistRecords, 'Relatório de Checklists', systemSettings);
+        const filtered = checklistRecords.filter(r => filterByDate(r.submissionDate));
+        generateChecklistsReportPDF(filtered, getPeriodText('Relatório de Checklists'), systemSettings);
         setIsExportingPDF(false);
         return;
       }
       
       if (reportName === 'combustivel') {
-        generateFuelPDF(fuelRecords, systemSettings);
+        const filtered = fuelRecords.filter(r => filterByDate(r.date));
+        generateFuelPDF(filtered, systemSettings, getPeriodText('Relatório de Abastecimentos'));
         setIsExportingPDF(false);
         return;
       }
       
       if (reportName === 'diarias') {
-        generateDailyPDF(dailyRecords, servidores, systemSettings);
+        const filtered = dailyRecords.filter(r => filterByDate(r.date));
+        generateDailyPDF(filtered, servidores, systemSettings, getPeriodText('Relatório de Diárias'));
         setIsExportingPDF(false);
         return;
       }
       
       if (reportName === 'contratos') {
-        generateContractsPDF(contracts, systemSettings);
+        const filtered = contracts.filter(r => filterByDate(r.signatureDate || ''));
+        generateContractsPDF(filtered, systemSettings, getPeriodText('Relatório de Contratos'));
+        setIsExportingPDF(false);
+        return;
+      }
+
+      if (reportName === 'notas-fiscais') {
+        const filtered = notasFiscais.filter(r => filterByDate(r.data_emissao));
+        const { generateNotasFiscaisPDF } = await import('./utils/pdf');
+        generateNotasFiscaisPDF(filtered, systemSettings, getPeriodText('Relatório de Notas Fiscais'));
         setIsExportingPDF(false);
         return;
       }
@@ -2234,6 +2259,7 @@ export default function App() {
             dailyRecords={dailyRecords}
             contracts={contracts}
             checklistRecords={checklistRecords}
+            notasFiscais={notasFiscais}
             handleExportPDF={handleExportPDF}
             isExportingPDF={isExportingPDF}
             chartData={chartData}

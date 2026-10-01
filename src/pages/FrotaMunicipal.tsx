@@ -279,7 +279,7 @@ export const FrotaMunicipal = ({ currentUser, addNotification, systemSettings }:
     setLendoSiga(true);
     try {
       const r = await lerFrotaSiga(file);
-      const porPlaca = new Map(vehicles.map(v => [normalizarPlaca(v.placa), v]));
+      const porPlaca = new Map<string, Vehicle>(vehicles.map(v => [normalizarPlaca(v.placa), v]));
       setLinhasImport(r.veiculos.map(v => {
         const existente = porPlaca.get(v.placa);
         return { ...v, incluir: true, existente, nome: existente?.nome || '' };

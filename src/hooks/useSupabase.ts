@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
-import { Contract, ChecklistItem, FuelRecord, DailyRecord, Servidor, User, SystemSettings, Protocol } from '../types';
+import { Contract, ChecklistItem, FuelRecord, DailyRecord, Servidor, User, SystemSettings, Protocol, NotaFiscal } from '../types';
 
 interface UseSupabaseProps {
   isAuthReady: boolean;
@@ -18,6 +18,7 @@ export function useSupabase({ isAuthReady, currentUser, isLoggedIn }: UseSupabas
   const [systemSettings, setSystemSettings] = useState<SystemSettings | null>(null);
   const [protocols, setProtocols] = useState<Protocol[]>([]);
   const [confirmations, setConfirmations] = useState<any[]>([]);
+  const [notasFiscais, setNotasFiscais] = useState<NotaFiscal[]>([]);
 
   const normalizeUserData = (u: any) => {
     let department = u.department;
@@ -217,6 +218,18 @@ export function useSupabase({ isAuthReady, currentUser, isLoggedIn }: UseSupabas
       }
     };
 
+    const fetchNotasFiscais = async () => {
+      try {
+        const data = await fetchWithRetry(() => 
+          supabase.from('invoices').select('*').eq('prefeituraId', prefeituraId),
+          "notas_fiscais"
+        );
+        setNotasFiscais(data || []);
+      } catch (error: any) {
+        console.warn('Erro ao carregar notas fiscais:', error.message);
+      }
+    };
+
     const fetchConfirmations = async () => {
       try {
         const getDeletedConfIds = (): string[] => {
@@ -276,6 +289,7 @@ export function useSupabase({ isAuthReady, currentUser, isLoggedIn }: UseSupabas
     fetchSettings();
     fetchProtocols();
     fetchConfirmations();
+    fetchNotasFiscais();
 
     // Realtime
     const confirmationsChannel = supabase.channel('confirmations-changes')
@@ -314,6 +328,10 @@ export function useSupabase({ isAuthReady, currentUser, isLoggedIn }: UseSupabas
       .on('postgres_changes', { event: '*', schema: 'public', table: 'settings', filter: `id=eq.${prefeituraId}` }, fetchSettings)
       .subscribe();
 
+    const notasFiscaisChannel = supabase.channel('notas-fiscais-changes')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'invoices', filter: `prefeituraId=eq.${prefeituraId}` }, fetchNotasFiscais)
+      .subscribe();
+
     return () => {
       supabase.removeChannel(contractsChannel);
       supabase.removeChannel(checklistsChannel);
@@ -324,6 +342,7 @@ export function useSupabase({ isAuthReady, currentUser, isLoggedIn }: UseSupabas
       supabase.removeChannel(settingsChannel);
       supabase.removeChannel(protocolsChannel);
       supabase.removeChannel(confirmationsChannel);
+      supabase.removeChannel(notasFiscaisChannel);
     };
   }, [isAuthReady, isLoggedIn, currentUser?.id, currentUser?.prefeituraId]);
 
@@ -337,6 +356,7 @@ export function useSupabase({ isAuthReady, currentUser, isLoggedIn }: UseSupabas
     systemSettings,
     protocols,
     confirmations,
+    notasFiscais,
     setContracts,
     setChecklistRecords,
     setFuelRecords,
@@ -426,6 +446,12 @@ export function useSupabase({ isAuthReady, currentUser, isLoggedIn }: UseSupabas
       } else {
         setUsers([currentUser]);
       }
+    },
+    fetchNotasFiscais: async () => {
+      if (!currentUser) return;
+      const prefId = currentUser.prefeituraId || '1';
+      const { data, error } = await supabase.from('invoices').select('*').eq('prefeituraId', prefId);
+      if (!error) setNotasFiscais(data || []);
     }
   };
 }

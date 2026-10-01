@@ -242,9 +242,9 @@ export const generateChecklistsReportPDF = (records: any[], title: string, syste
   doc.save(`relatorio_processos_${format(new Date(), 'yyyyMMdd')}.pdf`);
 };
 
-export const generateFuelPDF = (records: any[], systemSettings: any) => {
+export const generateFuelPDF = (records: any[], systemSettings: any, customTitle?: string) => {
   const doc = new jsPDF('l');
-  const startY = addHeader(doc, 'Relatório de Abastecimentos', systemSettings);
+  const startY = addHeader(doc, customTitle || 'Relatório de Abastecimentos', systemSettings);
   
   const body = records.map(r => [
     r.date ? format(new Date(r.date), 'dd/MM/yyyy') : '-',
@@ -267,9 +267,9 @@ export const generateFuelPDF = (records: any[], systemSettings: any) => {
   doc.save(`relatorio_abastecimentos_${format(new Date(), 'yyyyMMdd')}.pdf`);
 };
 
-export const generateDailyPDF = (records: any[], servidores: any[], systemSettings: any) => {
+export const generateDailyPDF = (records: any[], servidores: any[], systemSettings: any, customTitle?: string) => {
   const doc = new jsPDF('l');
-  const startY = addHeader(doc, 'Relatório de Diárias', systemSettings);
+  const startY = addHeader(doc, customTitle || 'Relatório de Diárias', systemSettings);
   
   const body = records.map(r => {
     const servant = servidores.find(s => 
@@ -295,9 +295,9 @@ export const generateDailyPDF = (records: any[], servidores: any[], systemSettin
   doc.save(`relatorio_diarias_${format(new Date(), 'yyyyMMdd')}.pdf`);
 };
 
-export const generateContractsPDF = (records: any[], systemSettings: any) => {
+export const generateContractsPDF = (records: any[], systemSettings: any, customTitle?: string) => {
   const doc = new jsPDF('l');
-  const startY = addHeader(doc, 'Relatório de Contratos', systemSettings);
+  const startY = addHeader(doc, customTitle || 'Relatório de Contratos', systemSettings);
   
   const body = records.map(r => [
     r.number || '-',
@@ -449,4 +449,38 @@ export const generateFleetReportPDF = (records: any[], systemSettings: any) => {
   });
   
   doc.save(`relatorio_frota_${format(new Date(), 'yyyyMMdd')}.pdf`);
+};
+
+export const generateNotasFiscaisPDF = (records: any[], systemSettings: any, customTitle?: string) => {
+  const doc = new jsPDF('l');
+  const startY = addHeader(doc, customTitle || 'Relatório de Notas Fiscais', systemSettings);
+  
+  const body = records.map(r => [
+    r.numero_nota || '-',
+    r.fornecedor || '-',
+    r.valor ? new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(Number(r.valor)) : '-',
+    r.data_emissao ? format(new Date(r.data_emissao + 'T12:00:00'), 'dd/MM/yyyy') : '-',
+    r.status?.toUpperCase() || '-',
+    r.recebido_por || '-',
+    r.recebido_em ? format(new Date(r.recebido_em), 'dd/MM/yyyy') : '-'
+  ]);
+  
+  autoTable(doc, {
+    startY,
+    head: [['Número', 'Fornecedor', 'Valor', 'Emissão', 'Status', 'Recebido Por', 'Data Receb.']],
+    body,
+    theme: 'striped',
+    headStyles: { fillColor: [2, 132, 199] },
+    columnStyles: {
+      0: { cellWidth: 20 },
+      1: { cellWidth: 'auto' },
+      2: { cellWidth: 30, halign: 'right' },
+      3: { cellWidth: 20 },
+      4: { cellWidth: 20 },
+      5: { cellWidth: 25 },
+      6: { cellWidth: 20 }
+    }
+  });
+  
+  doc.save(`relatorio_notas_fiscais_${format(new Date(), 'yyyyMMdd')}.pdf`);
 };
